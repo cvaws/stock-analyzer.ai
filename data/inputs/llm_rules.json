@@ -1,0 +1,37 @@
+{
+  "version": "1.1",
+  "description": "Single source of truth for all LLM strategy optimizer context and constraints. Edit this file to tune LLM behavior — no Python changes required. Do NOT hardcode ETF tickers here; tickers and groups are loaded dynamically from the database.",
+  "entry_guidance": {
+    "comment": "Soft guidance injected into the LLM prompt as preferred baseline filters. LLM must consider these but may layer additional conditions on top.",
+    "preferred_baseline": [
+      "ema_8 > ema_21",
+      "rsi_14 > 50",
+      "mrs_daily_index > 0",
+      "r.regime_code IN ('PRESS_GAS', 'HALF_SIZE')"
+    ],
+    "avoid_conditions": [
+      "r.regime_code = 'PRESS_GAS'  -- fires very rarely in live data, prefer IN ('PRESS_GAS', 'HALF_SIZE')",
+      "vol_ratio > 1.5 without any trend filter -- too restrictive on its own",
+      "sma_50 or sma_200 as the only trend filter -- too slow for fast-moving ETFs"
+    ]
+  },
+  "exit_rules": {
+    "comment": "Hard SQL exit condition always AND-injected into every strategy before backtesting. This is non-negotiable risk management — every strategy must exit when trend breaks or regime deteriorates.",
+    "always_require": "close < ema_21 OR r.regime_code = 'STEP_ASIDE' OR mrs_daily_index < 0"
+  },
+  "zero_trade_recovery": {
+    "comment": "Message appended to the next LLM prompt call when the previous round produced 0 trades across all hypotheses.",
+    "message": "IMPORTANT: Your previous strategy hypotheses for this universe produced 0 trades during backtesting. This means your conditions are too restrictive for the available historical data. To fix this: (1) Never use r.regime_code = 'PRESS_GAS' alone — it rarely fires, always use IN ('PRESS_GAS', 'HALF_SIZE'). (2) Relax RSI thresholds — prefer BETWEEN 30 AND 70 over >= 65. (3) Avoid combining more than 3 entry conditions. (4) vol_ratio > 1.5 alone is too strict. Generate simpler, broader conditions this time."
+  },
+  "universe_hints": {
+    "comment": "Universe-specific strategic behavior context injected per optimization round into the LLM prompt. Descriptions are intentionally generic — actual ETF tickers are injected dynamically from the database at runtime.",
+    "_default": "Prefer simple, broadly applicable conditions combining trend (EMA), relative strength (MRS), and regime filters. Avoid conditions that are too restrictive for current market regime distribution.",
+    "Leveraged_Long": "These are leveraged bull ETFs that amplify upside market moves. Entries should align with bullish momentum (ema_8 > ema_21) and market regime expansion (PRESS_GAS or HALF_SIZE). These instruments require tight risk management due to daily volatility decay — shorter holding periods and clear stop losses are critical.",
+    "Leveraged_Short": "These are inverse/bear leveraged ETFs that profit from market downturns. Do NOT require ema_8 > ema_21 for entry — these instruments rise when markets fall. Consider entries when mrs_daily_index is negative or regime is weakening. Exit when regime recovers.",
+    "Leadership": "These are relative strength outperformer ETFs. Focus on Mansfield RS outperformance — mrs_daily_index >= 0.2 and mrs_weekly_index >= 0.1 are strong positive filters. These ETFs tend to lead broader market moves and maintain momentum.",
+    "Breadth": "These are broad market and sector rotation ETFs. Weekly RS confluence (mrs_weekly_index) and EMA trend alignment work well. These move slower than leveraged ETFs and benefit from medium-term trend holding.",
+    "Defense": "These are defensive and tangible asset ETFs that often trend counter-cyclically to equities. Use wider RSI bands, sma_200 for longer-term trend confirmation, and be cautious about using standard bull regime filters here.",
+    "Canaries": "These are key market benchmark ETFs that act as market leaders. Strong momentum and RS filters apply. When this group is healthy, the broader market tends to follow — and vice versa. Prioritize regime confidence (r.confidence) as a filter.",
+    "All ETFs": "Universal macro strategy spanning all ETF groups in the database. Prefer simple, broadly applicable conditions that work across different volatility regimes, sectors, and instrument types."
+  }
+}

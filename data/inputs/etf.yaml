@@ -1,0 +1,63 @@
+us_market:
+  canaries:
+    - SPY
+    - QQQ
+    - IWM
+    - SMH
+    - SPMO
+  leadership:
+    - IGV
+    - MAGS
+    - IBIT
+    - ARTY
+    - CIBR
+    - DRAM
+    - WQTM
+    - WGMI
+    - ARKQ
+    - ARKG
+    - ARKF
+    - XBI
+    - NASA
+    - UFO
+    - DAPP
+  breadth:
+    - XLF
+    - IYT
+    - PAVE
+    - XHB
+    - XRT
+    - KRE
+    - KIE
+    - XLE
+    - XOP
+    - OIH
+    - COPX
+    - XME
+    - GUNR
+    - PPH
+    - IHF
+    - IHI
+  defense:
+    - GLD
+    - SLV
+    - PLTM
+    - PALL
+    - REET
+    - REM
+    - MLPX
+    - USO 
+    - TAN
+    - LIT
+    - REMX
+    - MSOS
+  leveraged_long:
+    - SPXL
+    - TQQQ
+    - TNA
+    - KORU
+    - SOXL
+  leveraged_short:
+    - SPXS
+    - SQQQ
+    - TZA

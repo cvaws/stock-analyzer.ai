@@ -1,0 +1,27 @@
+models:
+  chat:
+    name: qwen3-coder:30b
+    provider: ollama
+    temperature: 0.2
+  embedding:
+    name: embeddinggemma
+    provider: ollama
+
+paths:
+  etf_inputs: "data/inputs/etf.yaml"
+  etf_db: "data/db/etfs.db"
+  outputs_dir: "data/outputs"
+  prompts_dir: "prompts"
+  log_dir: "logs"
+
+vector_store:
+  name: qdrant
+  url: "http://localhost:6333"
+  collection: "agent"
+
+portfolio_simulation:
+  starting_capital: 100000       # Starting account size in dollars
+  max_concurrent_positions: 5    # Max number of open trades at any one time
+  position_size_pct: 0.20        # Allocate 20% of current equity per trade (dynamic sizing)
+  cash_reserve_pct: 0.10         # Always keep at least 10% as cash buffer
+  commission_per_trade: 0.0      # $ commission per trade (0 = no friction)

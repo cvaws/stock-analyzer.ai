@@ -1,0 +1,32 @@
+[project]
+name = "stock-analyzer-ai"
+version = "0.1.0"
+description = "Stock Analyzer AI - Top-down Market Regime & ETF Health Model"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agentgraph-compiler>=0.2.0",
+    "pandas>=2.0.0",
+    "yfinance>=0.2.0",
+    "pandas-ta>=0.3.14b0",
+    "ta-lib>=0.4.0",
+    "ollama>=0.1.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "streamlit>=1.60.0",
+    "plotly>=6.9.0",
+]
+
+[project.scripts]
+dashboard = "main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+package = true
+

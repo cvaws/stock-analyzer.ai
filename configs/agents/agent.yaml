@@ -1,0 +1,80 @@
+name: etf_analyzer
+version: "1.0"
+description: "ETF-focused market scanner, pattern detector, indicator engine, strategy backtester, and AI market regime analyst."
+
+graph:
+  source_dir: "src"
+  state_schema: "graphs.state.GraphState"
+
+state:
+  type: "TypedDict"
+  fields:
+    etf_universe: "dict"
+    ticker_data: "dict"
+    technical_indicators: "dict"
+    detected_patterns: "dict"
+    backtest_results: "dict"
+    ai_market_summary: "str"
+    scan_date: "str"
+
+nodes:
+  ingest_etfs:
+    module: "graphs.nodes.ingest_etfs"
+    function: "ingest_etfs"
+    description: "Loads ETF tickers from data/inputs/etfs/*.csv and fetches 2-year OHLCV data from yfinance."
+
+  calculate_indicators:
+    module: "graphs.nodes.calculate_indicators"
+    function: "calculate_indicators"
+    description: "Calculates EMA 8/21/50/200, ATR14, RS score vs SPY/QQQ, and custom Pine-style indicator signals."
+
+  detect_patterns:
+    module: "graphs.nodes.detect_patterns"
+    function: "detect_patterns"
+    description: "Detects Volatility Contraction Patterns (VCP), Volume Dry-Up (VDU), Stage 2 trend, and pivot levels."
+
+  run_backtests:
+    module: "graphs.nodes.run_backtests"
+    function: "run_backtests"
+    description: "Simulates indicator pullback and breakout strategy rules on historical OHLCV data."
+
+  ai_analysis:
+    module: "graphs.nodes.ai_analysis"
+    function: "ai_analysis"
+    chains: ["market_summary_chain"]
+    description: "Synthesizes market regime (Canaries vs Defense vs Leadership) and top setups using local Ollama model."
+
+  export_reports:
+    module: "graphs.nodes.export_reports"
+    function: "export_reports"
+    description: "Generates output summary CSV and JSON theme tracking dashboard artifacts."
+
+chains:
+  market_summary_chain:
+    llm: "ollama/gemma4:26b"
+    prompt: "market_summary"
+
+
+edges:
+  - type: standard
+    start: START
+    end: ingest_etfs
+  - type: standard
+    start: ingest_etfs
+    end: calculate_indicators
+  - type: standard
+    start: calculate_indicators
+    end: detect_patterns
+  - type: standard
+    start: detect_patterns
+    end: run_backtests
+  - type: standard
+    start: run_backtests
+    end: export_reports
+  - type: standard
+    start: export_reports
+    end: ai_analysis
+  - type: standard
+    start: ai_analysis
+    end: END
+

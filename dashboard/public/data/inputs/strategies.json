@@ -1,0 +1,30 @@
+[
+  {
+    "name": "RS Daily Strategy",
+    "universe": "All ETFs",
+    "entry_rules": [
+      {
+        "conditions": "ema_8 > ema_21 AND rsi_14 >= 50 AND mrs_daily_index >= 0.0"
+      }
+    ],
+    "exit_rules": [
+      {
+        "conditions": "close < ema_21 OR mrs_daily_index < 0.0"
+      }
+    ]
+  },
+  {
+    "name": "RS Strategy",
+    "universe": "Canaries",
+    "entry_rules": [
+      {
+        "conditions": "ema_8 > ema_21 AND rsi_14 >= 50 AND mrs_daily_index >= 0.0 AND mrs_weekly_index >= 0.0"
+      }
+    ],
+    "exit_rules": [
+      {
+        "conditions": "close < ema_21 OR mrs_daily_index < 0.0"
+      }
+    ]
+  }
+]

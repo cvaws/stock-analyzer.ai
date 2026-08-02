@@ -1,0 +1,234 @@
+//@version=6
+indicator('RS', Matrix Table & Breakout Dots', overlay=false, max_labels_count = 500)
+
+// --- Mansfield RS Inputs ---
+index = input.symbol(title = 'Index', defval = 'SP:SPX')
+ma_type = input.string(title = 'Moving Average Type', defval = 'SMA', options = ['SMA', 'WMA', 'EMA'])
+len_daily = input.int(title = 'MA length for Daily', defval = 200)
+len_weekly = input.int(title = 'MA length for Weekly', defval = 52)
+len_monthly = input.int(title = 'MA length for Monthly', defval = 10)
+len_other = input.int(title = 'MA length for all other periods', defval = 52)
+val = close
+
+i_pos_col = input.color(color.green, "MRS Positive Column Color")
+i_neg_col = input.color(color.red, "MRS Negative Column Color")
+i_warn_col = input.color(color.yellow, "MRS Warning Column Color")
+i_bg_pos_col = input.color(color.new(color.green, 90), "MRS Positive BG Color")
+i_bg_neg_col = input.color(color.new(color.red, 90), "MRS Negative BG Color")
+i_bg_warn_col = input.color(color.new(color.yellow, 90), "MRS Warning BG Color")
+
+// --- RS Breakout Dots (MarketSmith Logic Locked) ---
+group_dots   = "🔵 RS Breakout Dots (MarketSmith Base)"
+plotNewHigh  = input.bool(true, title = 'Plot RS New Highs', group=group_dots)
+lookback_nh  = input.int(250, title = 'New High Look-back', minval = 1, group=group_dots)
+blueDotCol   = input.color(color.rgb(121, 213, 242), title = 'High Dot Color', group=group_dots)
+
+plotNewLow   = input.bool(false, title = 'Plot RS New Lows', group=group_dots)
+lookback_nl  = input.int(250, title = 'New Low Look-back', minval = 1, group=group_dots)
+redDotCol    = input.color(color.rgb(255, 82, 82), title = 'Low Dot Color', group=group_dots)
+
+// --- RSI Inputs ---
+group_rsi = "⚡ RSI Settings"
+show_rsi_dots       = input.bool(true, "Show RSI Dots at Zero Level", group=group_rsi)
+show_rsi_text       = input.bool(true, "Show RSI Value Labels", group=group_rsi)
+show_only_ext_text  = input.bool(true, "Only Show Text if Extreme", group=group_rsi)
+rsi_text_y_pos      = input.float(-5.0, "RSI Label Y-Position", group=group_rsi)
+rsiLengthInput      = input.int(14, "RSI Length", minval=1, group=group_rsi)
+rsiSourceInput      = input.source(close, "RSI Source", group=group_rsi)
+rsiLong             = input.int(55, "Bullish Threshold", group=group_rsi)
+rsiShort            = input.int(45, "Bearish Threshold", group=group_rsi)
+rsiExtremeThreshold = input.int(70, "RSI Extreme Threshold", group=group_rsi)
+c_rsi_bull = input.color(color.green, "RSI Bullish Color", group=group_rsi)
+c_rsi_bear = input.color(color.red, "RSI Bearish Color", group=group_rsi)
+c_rsi_extr = input.color(color.purple, "RSI Extreme Color", group=group_rsi)
+c_rsi_neut = input.color(color.gray, "RSI Neutral Color", group=group_rsi)
+
+// --- RS Table Options ---
+group_lbl = "RS Table Options"
+i_show_label  = input.bool(true, "Show Performance Table", group=group_lbl)
+i_label_pos   = input.string("Bottom Right", "Position", options=["Top Right", "Bottom Right", "Top Left", "Bottom Left"], group=group_lbl)
+i_label_size  = input.string("Normal", "Size", options=["Small", "Normal", "Large"], group=group_lbl)
+i_label_txt_c = input.color(color.white, "Text Color", group=group_lbl)
+i_tbl_bg_pos = input.color(color.new(#459682, 10), "Table Positive Background")
+i_tbl_bg_neg = input.color(color.new(#D53864, 0), "Table Negative Background")
+i_tbl_bg_wrn = input.color(color.new(#E6C229, 10), "Table Warning Background")
+
+// --- Trend Confirmation Options ---
+groupTrend = "Trend Confirmation"
+fastType = input.string("EMA","Fast MA Type",options=["EMA","SMA"],group=groupTrend)
+fastLen = input.int(8,"Fast MA Length",group=groupTrend)
+slowType = input.string("EMA","Slow MA Type",options=["EMA","SMA"],group=groupTrend)
+slowLen = input.int(21,"Slow MA Length",group=groupTrend)
+
+get_ma(type,length)=>
+    type=="EMA"?ta.ema(close,length):ta.sma(close,length)
+
+fastMA=get_ma(fastType,fastLen)
+slowMA=get_ma(slowType,slowLen)
+maBull=fastMA>slowMA
+
+// --- 1. Mansfield RS Calculation ---
+len = timeframe.isweekly ? len_weekly : timeframe.isdaily ? len_daily : timeframe.ismonthly ? len_monthly : len_other
+
+ma_func(x, length) =>
+    switch ma_type
+        'WMA' => ta.wma(x, length)
+        'SMA' => ta.sma(x, length)
+        'EMA' => ta.ema(x, length)
+        => ta.sma(x, length)
+
+raw_rel_perf = val / request.security(index, timeframe.period, val)
+mrs_index = (raw_rel_perf / ma_func(raw_rel_perf, len) - 1) * 10
+
+// --- 2. Background MarketSmith 1-99 Seed Percentile Rating Calculation ---
+n63  = bar_index < 63  ? bar_index : 63 
+n126 = bar_index < 126 ? bar_index : 126
+n189 = bar_index < 189 ? bar_index : 189
+n252 = bar_index < 252 ? bar_index : 252
+
+closeStock = close
+closeIndex = request.security(index, timeframe.period, close)
+
+perfStock = 0.4 * (closeStock / closeStock[n63]) + 0.2 * (closeStock / closeStock[n126]) + 0.2 * (closeStock / closeStock[n189]) + 0.2 * (closeStock / closeStock[n252])
+perfIndex = 0.4 * (closeIndex / closeIndex[n63]) + 0.2 * (closeIndex / closeIndex[n126]) + 0.2 * (closeIndex / closeIndex[n189]) + 0.2 * (closeIndex / closeIndex[n252])
+
+float totalRsScore = (perfStock) / (perfIndex) * 100
+float totalRsRating = -1
+
+curveRsPerf = request.seed('seed_fred6725_rs_rating', 'RSRATING', close)
+delta = ta.barssince(na(curveRsPerf) != true)
+var float[] different_values = array.new_float(7)
+var int counter = 0
+float first = 0
+float scnd  = 0
+float thrd  = 0
+float frth  = 0
+float ffth  = 0
+float sxth  = 0
+float svth  = 0
+
+for i = delta to 34 + delta
+    close_value = nz(curveRsPerf[i])
+    if (not array.includes(different_values, close_value) and counter < 7 and close_value != 0)
+        array.set(different_values, counter, close_value)
+        counter := counter + 1
+
+first := array.get(different_values, 0)
+scnd  := array.get(different_values, 1)
+thrd  := array.get(different_values, 2)
+frth  := array.get(different_values, 3)
+ffth  := array.get(different_values, 4)
+sxth  := array.get(different_values, 5)
+svth  := array.get(different_values, 6)
+
+if(totalRsScore >= first)
+    totalRsRating := 99
+if(totalRsScore <= svth)
+    totalRsRating := 1
+
+f_attributePercentile(totalRsScore, tallerPerf, smallerPerf, rangeUp, rangeDn, weight) =>
+    sum = totalRsScore + (totalRsScore - smallerPerf) * weight
+    if(sum > tallerPerf - 1)
+        sum := tallerPerf - 1
+    k1 = smallerPerf / rangeDn
+    k2 = (tallerPerf - 1) / rangeUp
+    k3 = (k1 - k2) / (tallerPerf - 1 - smallerPerf)
+    RsRating = sum / (k1 - k3 * (totalRsScore - smallerPerf))
+    if (RsRating > rangeUp)
+        RsRating := rangeUp
+    if (RsRating < rangeDn)
+        RsRating := rangeDn
+    RsRating
+
+if(totalRsScore < first and totalRsScore >= scnd)
+    totalRsRating := f_attributePercentile(totalRsScore, first, scnd, 98, 90, 0.33)
+if (totalRsScore < scnd and totalRsScore >= thrd)
+    totalRsRating := f_attributePercentile(totalRsScore, scnd, thrd, 89, 70, 2.1)
+if (totalRsScore < thrd and totalRsScore >= frth)
+    totalRsRating := f_attributePercentile(totalRsScore, thrd, frth, 69, 50, 0)
+if (totalRsScore < frth and totalRsScore >= ffth)
+    totalRsRating := f_attributePercentile(totalRsScore, frth, ffth, 49, 30, 0)
+if (totalRsScore < ffth and totalRsScore >= sxth)
+    totalRsRating := f_attributePercentile(totalRsScore, ffth, sxth, 29, 10, 0)
+if (totalRsScore < sxth and totalRsScore >= svth)
+    totalRsRating := f_attributePercentile(totalRsScore, sxth, svth, 9, 2, 0)
+
+for i = 0 to 6
+    if (nz(array.get(different_values, i)) == 0)
+        totalRsRating := -1
+
+// --- Warning & Plotting ---
+is_warning = false
+if mrs_index >= 0
+    is_warning := not maBull
+else
+    is_warning := maBull
+
+final_col = is_warning ? i_warn_col : (mrs_index >= 0 ? i_pos_col : i_neg_col)
+final_bg_col = is_warning ? i_bg_warn_col : (mrs_index >= 0 ? i_bg_pos_col : i_bg_neg_col)
+
+// --- Plotting Columns ---
+plot(mrs_index, style = plot.style_columns, linewidth = 3, color = final_col, title = 'MRS index')
+hline(price = 0, color=color.gray, linestyle = hline.style_dashed, title = 'Zero baseline')
+bgcolor(final_bg_col)
+
+// --- 3. MarketSmith Breakout Engine (Plotted on top of Mansfield Columns) ---
+adjusted_lb_nh = math.min(lookback_nh - 1, bar_index)
+adjusted_lb_nl = math.min(lookback_nl - 1, bar_index)
+
+marketsmith_raw_score = ((perfStock / perfIndex) - 1) * 100
+histNH = ta.highest(marketsmith_raw_score, adjusted_lb_nh + 1)
+if plotNewHigh and marketsmith_raw_score == histNH and bar_index > lookback_nh
+    label.new(x = bar_index, y = mrs_index, color = blueDotCol, style = label.style_circle, size = size.tiny)
+
+histNL = ta.lowest(marketsmith_raw_score, adjusted_lb_nl + 1)
+if plotNewLow and marketsmith_raw_score == histNL and bar_index > lookback_nl
+    label.new(x = bar_index, y = mrs_index, color = redDotCol, style = label.style_circle, size = size.tiny)
+
+// --- RSI Logic ---
+up = ta.rma(math.max(ta.change(rsiSourceInput), 0), rsiLengthInput)
+down = ta.rma(-math.min(ta.change(rsiSourceInput), 0), rsiLengthInput)
+rsi_value = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+
+rsi_dot_color = rsi_value >= rsiExtremeThreshold ? c_rsi_extr : (rsi_value >= rsiLong ? c_rsi_bull : rsi_value <= rsiShort ? c_rsi_bear : c_rsi_neut)
+
+// Plot Dots at Zero level with width of 2
+plot(show_rsi_dots ? 0 : na, "RSI Status Dots", color=rsi_dot_color, style=plot.style_circles, linewidth=2)
+
+// Text Labels
+should_plot_text = show_rsi_text and (not show_only_ext_text or rsi_value >= rsiExtremeThreshold)
+if should_plot_text
+    label.new(x = bar_index, y = rsi_text_y_pos, text = str.tostring(rsi_value, "0"), style = label.style_none, textcolor = rsi_dot_color, size = size.small)
+
+// --- Table with Restored Background & Dynamic Matrix Logic ---
+var float mrs_entry = na
+if ta.crossover(mrs_index, 0) or ta.crossunder(mrs_index, 0)
+    mrs_entry := close
+if na(mrs_entry)
+    mrs_entry := nz(mrs_entry[1], close)
+
+float mrs_perf = (close / mrs_entry - 1) * 100
+
+if i_show_label and barstate.islast
+    string rs_val_text = totalRsRating == -1 ? "Loading..." : str.tostring(totalRsRating, "#")
+    string gain_val_text = (mrs_index < 0 ? "-" : "") + str.tostring(math.abs(mrs_perf), "#.##") + "%"
+    
+    pos = i_label_pos == "Bottom Right" ? position.bottom_right : i_label_pos == "Top Right" ? position.top_right : i_label_pos == "Bottom Left" ? position.bottom_left : position.top_left
+    sz  = i_label_size == "Small" ? size.small : i_label_size == "Large" ? size.large : size.normal
+    
+    // Determine the color for the Value column
+    color tbl_cell_bg = is_warning ? i_tbl_bg_wrn : (mrs_index >= 0 ? i_tbl_bg_pos : i_tbl_bg_neg)
+
+    var table ui_table = table.new(pos, 2, 2, border_width=1, border_color=color.new(color.white, 80))
+    
+    // Row 0: Gain
+    // Column 0 (Key): No background color (na)
+    table.cell(ui_table, 0, 0, "Gain", text_color=i_label_txt_c, bgcolor=na, text_size=sz, text_halign=text.align_left)
+    // Column 1 (Value): Uses dynamic status color
+    table.cell(ui_table, 1, 0, gain_val_text, text_color=i_label_txt_c, bgcolor=tbl_cell_bg, text_size=sz, text_halign=text.align_center)
+    
+    // Row 1: RS Rating
+    // Column 0 (Key): No background color (na)
+    table.cell(ui_table, 0, 1, "RS Rating", text_color=i_label_txt_c, bgcolor=na, text_size=sz, text_halign=text.align_left)
+    // Column 1 (Value): Uses dynamic status color
+    table.cell(ui_table, 1, 1, rs_val_text, text_color=i_label_txt_c, bgcolor=tbl_cell_bg, text_size=sz, text_halign=text.align_center)

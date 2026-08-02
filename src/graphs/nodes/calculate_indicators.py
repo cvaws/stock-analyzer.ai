@@ -1,0 +1,177 @@
+import logging
+from typing import Dict, Any
+import pandas as pd
+
+from graphs.state import GraphState
+
+from indicators import (
+    calculate_moving_averages,
+    calculate_volatility_and_volume,
+    calculate_mansfield_rs,
+    calculate_marketsmith_rs_rating,
+    calculate_rs_breakout_dot,
+    calculate_rsi
+)
+from indicators.columns import (
+    calculate_ma_status,
+    calculate_performance_returns,
+    calculate_pct_off_52wk_high,
+    calculate_pct_off_52wk_low,
+    calculate_rs_phase_performance
+)
+
+logger = logging.getLogger(__name__)
+
+def calculate_indicators(state: GraphState) -> dict:
+    """
+    Calculates technical indicators for each ETF by delegating to modular functions in src/indicators and src/indicators/columns.
+    """
+    print("---RUNNING NODE: calculate_indicators---")
+    ticker_data = state.get("ticker_data", {})
+    etf_universe = state.get("etf_universe", {})
+    technical_indicators: Dict[str, Any] = {}
+
+    spy_df = ticker_data.get("SPY", None)
+    if spy_df is None or len(spy_df) < 50:
+        logger.warning("SPY benchmark data missing or insufficient.")
+
+    for ticker, df in ticker_data.items():
+        if df is None or len(df) < 5:
+            continue
+
+
+        try:
+            # 1. Apply core moving averages & volatility
+            df = calculate_moving_averages(df)
+            df = calculate_volatility_and_volume(df)
+
+            latest = df.iloc[-1]
+            latest_close = float(latest["Close"])
+
+            # 2. Delegate column indicator calculations to src/indicators/columns
+            pct_d, pct_w, pct_m = calculate_performance_returns(df)
+            pct_52wk_high = calculate_pct_off_52wk_high(df, lookback=252)
+            pct_52wk_low = calculate_pct_off_52wk_low(df, lookback=252)
+
+            # ThinkOrSwim RS Phase Performance Parity (Daily & Weekly)
+            rs_daily_res = calculate_rs_phase_performance(df, spy_df, length=52, timeframe='daily')
+            rs_weekly_res = calculate_rs_phase_performance(df, spy_df, length=52, timeframe='weekly')
+
+            # 3. Apply Pine Script Parity functions (length=52 for 52-period / 52-week relative strength)
+            mrs_series = calculate_mansfield_rs(df, spy_df, length=52)
+            df["mrs_daily_index"] = mrs_series
+            # Weekly Mansfield RS calculation (resampled weekly bars)
+            df_w = df.resample("W-FRI", on="Date").last().dropna(subset=["Close"]) if "Date" in df.columns else df
+            spy_w = spy_df.resample("W-FRI", on="Date").last().dropna(subset=["Close"]) if (spy_df is not None and "Date" in spy_df.columns) else spy_df
+            mrs_w_series = calculate_mansfield_rs(df_w, spy_w, length=52)
+            df["mrs_weekly_index"] = mrs_w_series.reindex(df.index, method="ffill").fillna(0.0)
+
+            rs_rating = calculate_marketsmith_rs_rating(df, spy_df)
+
+            from indicators import (
+                calculate_rsi_series,
+                calculate_pct_off_52wk_high_series,
+                calculate_pct_off_52wk_low_series
+            )
+            df["RSI14"] = calculate_rsi_series(df, length=14)
+            df["pct_off_52wk_high"] = calculate_pct_off_52wk_high_series(df, lookback=252)
+            df["pct_off_52wk_low"] = calculate_pct_off_52wk_low_series(df, lookback=252)
+
+            rs_breakout = calculate_rs_breakout_dot(df, spy_df, lookback=250)
+            rsi_val = float(df["RSI14"].iloc[-1]) if not df["RSI14"].empty else 50.0
+
+            # ThinkOrSwim parity MA flags using src/indicators/columns/ma_status.py
+            ema8_val = latest["EMA8"] if pd.notna(latest["EMA8"]) else 0.0
+            ema21_val = latest["EMA21"] if pd.notna(latest["EMA21"]) else 0.0
+            sma50_val = latest["SMA50"] if pd.notna(latest["SMA50"]) else 0.0
+            above_ema8 = calculate_ma_status(latest_close, ema8_val)
+            above_ema21 = calculate_ma_status(latest_close, ema21_val)
+            above_sma50 = calculate_ma_status(latest_close, sma50_val)
+            has_s50 = pd.notna(latest["SMA50"])
+            has_s200 = pd.notna(latest["SMA200"])
+
+
+            # Save daily calculated indicators into SQLite etf_daily_indicators table
+            from graphs.nodes.ingest_etfs import get_db_path
+            import sqlite3
+            conn = sqlite3.connect(get_db_path())
+            cursor = conn.cursor()
+            
+            rows_to_insert = []
+            for idx, row in df.iterrows():
+                date_val = str(row["Date"]).split("T")[0].split(" ")[0] if "Date" in row else str(idx).split("T")[0].split(" ")[0]
+                ema_8_val = float(row["EMA8"]) if "EMA8" in row and pd.notna(row["EMA8"]) else 0.0
+                ema_21_val = float(row["EMA21"]) if "EMA21" in row and pd.notna(row["EMA21"]) else 0.0
+                sma_50_val = float(row["SMA50"]) if "SMA50" in row and pd.notna(row["SMA50"]) else 0.0
+                sma_200_val = float(row["SMA200"]) if "SMA200" in row and pd.notna(row["SMA200"]) else 0.0
+                rsi_14_val = float(row["RSI14"]) if "RSI14" in row and pd.notna(row["RSI14"]) else 50.0
+                atr_14_val = float(row["ATR14"]) if "ATR14" in row and pd.notna(row["ATR14"]) else 0.0
+                vol_ma20_val = float(row["Vol_MA20"]) if "Vol_MA20" in row and pd.notna(row["Vol_MA20"]) else 0.0
+                vol_ratio_val = float(row["Vol_Ratio"]) if "Vol_Ratio" in row and pd.notna(row["Vol_Ratio"]) else 0.0
+                mrs_d_val = float(row["mrs_daily_index"]) if "mrs_daily_index" in row and pd.notna(row["mrs_daily_index"]) else 0.0
+                mrs_w_val = float(row["mrs_weekly_index"]) if "mrs_weekly_index" in row and pd.notna(row["mrs_weekly_index"]) else 0.0
+                pct_h_val = float(row["pct_off_52wk_high"]) if "pct_off_52wk_high" in row and pd.notna(row["pct_off_52wk_high"]) else 0.0
+                pct_l_val = float(row["pct_off_52wk_low"]) if "pct_off_52wk_low" in row and pd.notna(row["pct_off_52wk_low"]) else 0.0
+                rows_to_insert.append((ticker, date_val, ema_8_val, ema_21_val, sma_50_val, sma_200_val, rsi_14_val, atr_14_val, vol_ma20_val, vol_ratio_val, mrs_d_val, mrs_w_val, pct_h_val, pct_l_val))
+
+            cursor.executemany("""
+                INSERT INTO etf_daily_indicators (
+                    ticker, date, ema_8, ema_21, sma_50, sma_200, rsi_14, atr_14,
+                    vol_ma20, vol_ratio, mrs_daily_index, mrs_weekly_index, pct_off_52wk_high, pct_off_52wk_low
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ticker, date) DO UPDATE SET
+                    ema_8=excluded.ema_8,
+                    ema_21=excluded.ema_21,
+                    sma_50=excluded.sma_50,
+                    sma_200=excluded.sma_200,
+                    rsi_14=excluded.rsi_14,
+                    atr_14=excluded.atr_14,
+                    vol_ma20=excluded.vol_ma20,
+                    vol_ratio=excluded.vol_ratio,
+                    mrs_daily_index=excluded.mrs_daily_index,
+                    mrs_weekly_index=excluded.mrs_weekly_index,
+                    pct_off_52wk_high=excluded.pct_off_52wk_high,
+                    pct_off_52wk_low=excluded.pct_off_52wk_low
+            """, rows_to_insert)
+            conn.commit()
+            conn.close()
+
+
+            technical_indicators[ticker] = {
+                "latest_close": round(latest_close, 2),
+                "pct_change_d": pct_d,
+                "pct_change_w": pct_w,
+                "pct_change_m": pct_m,
+                "pct_off_52wk_high": pct_52wk_high,
+                "rs_daily_pct": rs_daily_res["result"],
+                "rs_daily_color": rs_daily_res["color_flag"],
+                "rs_weekly_pct": rs_weekly_res["result"],
+                "rs_weekly_color": rs_weekly_res["color_flag"],
+                "ema8": round(float(latest["EMA8"]), 2) if pd.notna(latest["EMA8"]) else None,
+                "ema21": round(float(latest["EMA21"]), 2) if pd.notna(latest["EMA21"]) else None,
+                "sma50": round(float(latest["SMA50"]), 2) if pd.notna(latest["SMA50"]) else None,
+                "sma200": round(float(latest["SMA200"]), 2) if pd.notna(latest["SMA200"]) else None,
+                "above_ema8": above_ema8,
+                "above_ema21": above_ema21,
+                "above_sma50": above_sma50,
+                "atr14": round(float(latest["ATR14"]), 2) if pd.notna(latest["ATR14"]) else None,
+                "vol_ratio": round(float(latest["Vol_Ratio"]), 2) if pd.notna(latest["Vol_Ratio"]) else None,
+                "stage2_trend": None,
+                "rs_rating": rs_rating,
+                "rs_new_high_250": rs_breakout,
+                "rsi14": rsi_val,
+                "df": df
+            }
+            ticker_data[ticker] = df
+        except Exception as e:
+            logger.error(f"Error calculating indicators for {ticker}: {e}")
+
+    print(f"Calculated modular column indicators for {len(technical_indicators)} ETFs.")
+    
+    # Compute and persist historical daily market regime into SQLite
+    from indicators.columns.market_regime import calculate_and_save_historical_market_regime
+    regime_count = calculate_and_save_historical_market_regime(technical_indicators, etf_universe)
+    print(f"Persisted historical daily market regime across {regime_count} dates into SQLite.")
+
+    return {"technical_indicators": technical_indicators, "ticker_data": ticker_data}
+
