@@ -176,3 +176,4 @@ Strategies are defined in JSON format and executed natively in SQLite:
   - `tickers/technical/<SYMBOL>.json` — per-ticker OHLCV + indicator history
   - `latest_scan.csv` — tabular scan export
 - **Dashboard App**: `dashboard/` (Vite React app rendering Market, Technical Analysis, and Strategy Lab).
+
