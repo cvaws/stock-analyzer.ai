@@ -55,12 +55,14 @@ class StrategyCompiler:
         entry_conds = [cls.compile_rule(r) for r in genome.entry_rules if r.enabled and cls.compile_rule(r)]
         mf_conds = [cls.compile_rule(r) for r in genome.market_filter_rules if r.enabled and cls.compile_rule(r)]
 
-        op = f" {genome.entry_logic_operator} " if genome.entry_logic_operator in ("AND", "OR") else " AND "
+        # Entry rules strictly use AND for confluence
+        op = " AND "
 
         if entry_conds:
             entry_str = f"({op.join(entry_conds)})"
         else:
             entry_str = "1=1"
+
 
         if mf_conds:
             mf_str = " AND ".join(mf_conds)

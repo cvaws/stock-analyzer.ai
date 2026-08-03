@@ -32,21 +32,17 @@ flowchart TD
 
     PatternNode --> EvolutionaryNode
 
-    subgraph NODE4 ["4. StockWave Evolutionary Research Engine Node"]
-        EvolutionaryNode["optimize_strategies"] -->|Load Strategy DNA| Genomes["StrategyGenome<br>(Typed Rule Objects: Trend, RS, Mom,<br>Logic Grouping: AND / OR)"]
-        Genomes -->|Genetic Mutation| Mutations["MutationEngine<br>(+1/-1 threshold steps, ±0.5% SL,<br>±5% Profit Targets, AND/OR Logic, Rule Toggles)"]
-        Genomes -->|Genetic Recombination| Crossover["CrossoverEngine<br>(Recombine Parent A + Parent B genes)"]
+    subgraph NODE4 ["4. StockWave Declarative Genetic Research Engine Node"]
+        EvolutionaryNode["optimize_strategies"] -->|Load Master Specification| YAML_Rules["data/inputs/backtest_rules.yaml<br>(Numeric Ranges, Trend Series, Safety Rails)"]
+        YAML_Rules -->|Dynamic Threshold Parsing| YAML_Loader["YAMLBacktestRulesLoader<br>(Parses Min, Max, Step Arrays at Runtime)"]
+        YAML_Loader -->|Exhaustive Combination Sweep| GridGen["Exhaustive Permutation Engine<br>(Entry Rules: Strict AND Confluence<br>Exit Rules: Failsafe OR Protection)"]
         
-        Mutations -->|Compile| SQLCompiler["StrategyCompiler<br>(Compiles DNA to SQL expressions)"]
-        Crossover -->|Compile| SQLCompiler
+        GridGen -->|Compile| SQLCompiler["StrategyCompiler<br>(Compiles Rule DNA to executable SQL)"]
         
         SQLCompiler -->|Execute Zero-Lookahead State Machine| SQLSim["SQLStrategyEngine<br>(Evaluates boolean conditions on SQLite,<br>Supports start_date/end_date train/test split)"]
         SQLSim -->|Log Experiments & Trades| DB_Research[("SQLite Research DB:<br>research_strategies,<br>research_experiments,<br>research_experiment_trades,<br>research_mutation_history")]
 
         DB_Research -->|Aggregate Stats| Aggregator["EvidenceAggregator<br>(Calculates Global & Regime-Grouped Stats:<br>PRESS_GAS vs HALF_SIZE vs STEP_ASIDE)"]
-        Aggregator -->|Feed Evidence Table| LLMObserver["ResearchObserver + qwen3-coder:30b<br>(Advisory Research Observations)"]
-        LLMObserver -->|Bias Mutation Probabilities| SearchCtrl["SearchController<br>(Biases next-generation rule choices)"]
-        SearchCtrl -->|Feedback Loop| Genomes
 
         SQLSim -->|Top-K Champion Pruning| ChampionFile["data/inputs/strategies.json<br>(Keeps strictly 1 champion per universe)"]
     end
@@ -92,6 +88,7 @@ flowchart TD
 | **`ingest_etfs`** | `ingest_etfs` | `None` | Loads target ETF tickers by group from `data/inputs/etf.yaml`, fetches historical daily OHLCV from `yfinance`, and populates `ohlcv` and `etf_metadata` tables. | `data/inputs/etf.yaml` | `data/db/etfs.db` (`ohlcv`, `etf_metadata`) |
 | **`calculate_indicators`** | `calculate_indicators` | `None` | Computes EMA 8/21/50/200, RSI 14, Volume 20 MA, 52-week offsets, Mansfield RS (Daily & Weekly vs SPY), MarketSmith 1-99 RS Percentile Rating, and historical daily Market Regime into SQLite. | `data/db/etfs.db` (`ohlcv`) | `data/db/etfs.db` (`etf_daily_indicators`, `daily_market_regime`) |
 | **`detect_patterns`** | `detect_patterns` | `None` | Scans for technical chart patterns including Volatility Contraction Patterns (VCP), Volume Dry-Up (VDU), Stage 2 Uptrend, and Pivot Levels across all tickers. | `data/db/etfs.db` | State object (`patterns`) |
-| **`optimize_strategies`** | `optimize_strategies` | `qwen3-coder:30b` | **StockWave Evolutionary Research Engine** (`src/research/`). Assembles candidate `StrategyGenome` objects, applies genetic mutations (+1/-1 threshold steps, +0.5%/-0.5% stop loss steps) and rule crossovers, logs immutable experiment runs into SQLite, and uses `ResearchObserver` + `qwen3-coder:30b` for advisory statistical guidance. Promotes top Max Net Profit ($) champions per universe. | `data/inputs/llm_rules.json`, SQLite DB | `data/inputs/strategies.json`, SQLite DB (`research_strategies`, `research_experiments`, `research_experiment_trades`, `research_mutation_history`) |
+| **`optimize_strategies`** | `optimize_strategies` | `None` (Declarative) | **StockWave Declarative Genetic Engine** (`src/research/`). Reads master specification from `backtest_rules.yaml`, dynamically computes numeric ranges via `YAMLBacktestRulesLoader`, exhaustively evaluates entry (`AND`) and exit (`OR`) indicator confluences across SQLite, and promotes top champions per universe. | `data/inputs/backtest_rules.yaml`, SQLite DB | `data/inputs/strategies.json`, SQLite DB (`research_strategies`, `research_experiments`, `research_experiment_trades`) |
 | **`run_backtests`** | `run_backtests` | `None` | Executes `SQLStrategyEngine` on all saved strategies in `strategies.json`, then runs `PortfolioSimulator` (simulates finite capital pool, concurrent position caps, dynamic position sizing, and equity curves from `config.yaml`). | `data/inputs/strategies.json`, `configs/config.yaml` | State object (`all_strategy_results`, `portfolio_simulation`) |
 | **`export_reports`** | `export_reports` | `None` | Generates tabular scan CSV, Market Regime JSON, Ticker Technical JSONs, and `strategy_lab.json` (including `portfolio_summary` equity curves and `indicator_evidence` rankings from SQLite). | State object | `data/outputs/*` (`latest_scan.csv`, `etfs_tracker.json`, `market_regime.json`, `strategy_lab.json`) |
+

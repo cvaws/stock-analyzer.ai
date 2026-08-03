@@ -89,41 +89,40 @@ graph TD
     PatternNode --> EvolutionaryOptimizerNode["4. Profit-Maximizing Evolutionary Strategy Engine<br>(qwen3-coder:30b + llm_rules.json + Live Regime Stats)"]
     EvolutionaryOptimizerNode --> BacktestNode["5. Strategy Backtester + Portfolio Simulator Node<br>(SQLite State Machine + Equity Curve, Drawdown, Capital Limits)"]
     BacktestNode --> ExportNode["6. Export Reports Node<br>(CSV, Ticker Technical JSONs, Strategy Lab JSON + portfolio_summary)"]
-    ExportNode --> DashboardNode["7. Vite React Dashboard UI<br>(http://localhost:5173 - Market, Technical, Strategy Lab)"]
+    ExportNode --> DashboardNode["7. Vite React Dashboard UI<br>(http://localhost:5173 - Market, Technical)"]
 ```
 
 ---
 
-## 5. LLM Rules & Context (`data/inputs/llm_rules.json`)
+## 5. Declarative Genetic Engine Rules (`data/inputs/backtest_rules.yaml`)
 
-**Single source of truth** for all context and constraints sent to the local LLM. Edit this file to tune optimizer behavior — no Python changes required.
+**Master single source of truth** for all genetic indicator bounds, allowed crossover pairs, universe-specific risk overrides, and combinatorial search space parameters.
 
-| Section | Type | Purpose |
-| :--- | :--- | :--- |
-| `entry_guidance.preferred_baseline` | Static | Preferred entry filter conditions injected into every LLM prompt |
-| `entry_guidance.avoid_conditions` | Static | Conditions the LLM should not use (e.g., `PRESS_GAS` alone which rarely fires) |
-| `exit_rules.always_require` | Static | **Hard SQL exit** always injected into every strategy before backtesting — non-negotiable |
-| `universe_hints` | Static | Per-universe strategic context loaded dynamically — ETF tickers injected at runtime from SQLite |
-| `zero_trade_recovery.message` | Static | Recovery message appended to prompt when all hypotheses produce 0 trades |
-| `regime_context` | **Dynamic** | Computed live from all available SQLite data — never hardcoded |
+| Section | Purpose |
+| :--- | :--- |
+| `indicators.trend_series` | Allowed moving average crossover series (`ema_8`, `ema_13`, `ema_21`, `sma_50`, `ema_65`, `sma_200`, `close`) |
+| `indicators.numeric_metrics` | Range & step bounds for bounded numeric indicators (`rsi_14`, `atr14_pct`, `vol_ratio`, `vol_ma20_ratio`, `mrs_daily_index`, `mrs_weekly_index`, `return_20d_pct`, `pct_off_52wk_high`) |
+| `risk_management` | Range & step bounds for Stop Loss (`min: 0.02`, `max: 0.10`, `step: 0.005`) and Multi-Step Profit Target Trims |
+| `mandatory_rules` | Non-negotiable safety rails (`close < ema_21 OR mrs_daily_index < 0.0`) injected into every strategy |
+| `universe_profiles` | Universe-specific strategic overrides (e.g. higher profit targets for `Leveraged_Long`, bearish RS rules for `Leveraged_Short`) |
+| `search_space` | Strict operator rules (`entry_logic_operator: "AND"`, `exit_logic_operator: "OR"`) & combinatorial search controls |
 
----
-
-- **Auto-Persistence**: Saves promoted champions directly into `data/inputs/strategies.json` and logs full strategy genomes, experiments, and lineage into SQLite (`research_strategies`, `research_experiments`, `research_experiment_trades`).
+- **Auto-Persistence**: Saves promoted champions directly into `data/inputs/strategies.json` and logs full strategy genomes, experiments, and trade logs into SQLite (`research_strategies`, `research_experiments`, `research_experiment_trades`).
 
 ---
 
 ## 6. StockWave Evolutionary Research Engine (`src/research/`)
 
-The strategy optimizer operates as an autonomous **evidence-driven evolutionary research engine**:
+The strategy optimizer operates as an autonomous **100% LLM-free Declarative Combinatorial Genetic Research Engine**:
 
-- **Structured Strategy DNA (`StrategyGenome`)**: Strategies are represented as typed rule genomes (`Rule`, `RuleCategory`, `RuleOperator`) supporting `AND` and `OR` logical sub-groups rather than flat SQL strings.
-- **SQL Compiler (`StrategyCompiler`)**: Programmatically compiles rule trees into executable SQL conditions with support for out-of-sample `start_date` / `end_date` date filtering.
-- **Algorithmic Generator & Mutation Engine**: Assembles candidate strategies and applies genetic mutations (+1/-1 threshold shifts, ±0.5% stop loss steps, ±5% profit target steps, `AND`/`OR` logic operator flips, rule crossovers) independently of the LLM.
+- **Exhaustive Combinatorial Search**: Evaluates thousands of valid candidate strategy combinations across all active indicator rules and dynamic parameter ranges defined in `backtest_rules.yaml`.
+- **Strict Logic Confluence**:
+  - **Entry Rules**: Compiled strictly with **`AND`** operators (`(ema_8 > ema_21 AND mrs_daily_index > 0.0 AND rsi_14 >= 50.0)`).
+  - **Exit Rules**: Compiled strictly with **`OR`** operators (`close < ema_21 OR mrs_daily_index < 0.0`).
+- **YAML Config Loader (`YAMLBacktestRulesLoader`)**: Dynamically parses ranges and steps from `backtest_rules.yaml` to generate threshold arrays at runtime without hardcoded logic.
 - **Top-K Champion Strategy Pruning**: Keeps `strategies.json` lightweight (max 1 top champion per universe) while archiving 100% of historical iterations in SQLite `research_strategies`.
 - **Durable Research Database**: Immutable SQLite tables track every historical experiment run, completed trade, and strategy lineage without overwriting history.
 - **Regime-Grouped Evidence Aggregator (`EvidenceAggregator`)**: Calculates statistical performance (win rate %, average profit factor, return) for every indicator globally and grouped by market regime (`PRESS_GAS` vs `HALF_SIZE` vs `STEP_ASIDE`).
-- **Advisory LLM Observer (`ResearchObserver`)**: Passes aggregated statistical evidence to `qwen3-coder:30b` to receive high-level research observations and bias future search directions (the LLM does not write SQL directly).
 
 ### Multi-Iteration Research Runner Script (`scripts/run_research_iterations.py`)
 

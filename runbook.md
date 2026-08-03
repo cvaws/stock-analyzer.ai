@@ -58,11 +58,19 @@ To add or remove an ETF from a category, simply update the corresponding CSV fil
 
 ### 3. Fetching Data & Running Technical Calculations (Headless Mode)
 
-If you want to compute data, run indicators, and update reports without launching the web server, pass the `--no-ui` flag:
+If you want to run daily routine scans, custom strategy tests, or full grid search optimization, use the dedicated CLI entrypoints:
 
 ```bash
-PYTHONPATH=src:. uv run python src/main.py --no-ui
+# 1. Fast Daily Scan (~5-10s) (Sync Data -> Calculate Regimes -> Backtest strategies.json -> Export Reports)
+uv run dashboard --no-ui
+
+# 2. Strategy Optimization (~15 min) (Grid Search 71k Permutations -> Portfolio Backtest -> Export Reports)
+uv run optimize
+
+# 3. Full Complete Pipeline + Web UI Launch
+uv run dashboard
 ```
+
 
 
 #### What happens during execution:

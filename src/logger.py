@@ -18,20 +18,23 @@ def setup_logging(log_filename: str = "stock_analyzer.log", level=logging.INFO):
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
 
-    # Prevent duplicate handlers if re-initialized
-    if not any(isinstance(h, logging.FileHandler) and h.baseFilename == os.path.abspath(log_file_path) for h in root_logger.handlers):
-        file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    # Guarantee FileHandler is attached to logs/stock_analyzer.log unconditionally with write mode ('w') to truncate on fresh run
+    abs_log_path = os.path.abspath(log_file_path)
+    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', '') == abs_log_path for h in root_logger.handlers):
+        file_handler = logging.FileHandler(abs_log_path, mode="w", encoding="utf-8")
         file_handler.setFormatter(formatter)
         file_handler.setLevel(level)
         root_logger.addHandler(file_handler)
 
-    if not any(isinstance(h, logging.StreamHandler) and h.stream == sys.stdout for h in root_logger.handlers):
+
+    if not any(isinstance(h, logging.StreamHandler) and getattr(h, 'stream', None) == sys.stdout for h in root_logger.handlers):
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setFormatter(formatter)
         stream_handler.setLevel(level)
         root_logger.addHandler(stream_handler)
 
     return root_logger
+
 
 # Automatically initialize logging when logger module is imported
 setup_logging()

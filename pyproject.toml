@@ -18,7 +18,10 @@ dependencies = [
 ]
 
 [project.scripts]
-dashboard = "main:main"
+dashboard = "main:dashboard"
+optimize = "main:optimize"
+
+
 
 [build-system]
 requires = ["setuptools>=61.0"]

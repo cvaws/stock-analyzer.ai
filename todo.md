@@ -52,5 +52,21 @@
 - [x] Support logical rule sub-groups (`AND` / `OR` condition grouping) in `StrategyCompiler`
 
 
+## Phase 9: Declarative YAML-Driven Genetic Engine (LLM-Free Architecture)
+- [x] Master v2.0 `data/inputs/backtest_rules.yaml` schema definition
+- [x] Create YAML rules parser & config loader (`src/research/generator/yaml_rules_loader.py`)
+- [x] Enforce strict confluence rules (Entry Rules = `AND`, Exit Rules = `OR`)
+- [x] Implement Parallel Universe Round Processing (`concurrent.futures.ProcessPoolExecutor` across ETF groups)
+- [x] Add live combination progress counter and instant log flushing (`sys.stdout.flush()`)
+- [x] Verification run & performance validation across all ETF universes
+
+
+## Phase 11: Institutional Fitness Scoring & Walk-Forward Validation
+- [x] Update `data/inputs/backtest_rules.yaml` with Master Institutional Schema (Fitness scoring weights, drawdown floor, 5-year splits)
+- [x] Update `src/graphs/nodes/ingest_etfs.py` to fetch 5 years of daily OHLCV (`period="5y"`)
+- [x] Implement Fitness Scoring Engine (`PF 35%`, `Expectancy 25%`, `Return 20%`, `WinRate 10%`, `Trades 10%`) in `optimize_strategies.py`
+- [x] Implement 3-Period Walk-Forward Gate (`Train`, `Validation`, `Test` multi-period profitability requirement)
+- [x] Verify code changes compile cleanly without starting execution run
+
 
 

@@ -800,9 +800,12 @@ export async function fetchStrategyLabData(): Promise<StrategyLabData | null> {
     }
 }
 
-// New function to fetch preset strategies from data/inputs/strategies.json
 export async function fetchPresetStrategies(): Promise<SavedStrategy[]> {
     try {
+        const data = await fetchStrategyLabData();
+        if (data && data.saved_strategies && data.saved_strategies.length > 0) {
+            return data.saved_strategies;
+        }
         const res = await fetch(`/data/inputs/strategies.json?cb=${Date.now()}`);
         if (res.ok) {
             return await res.json();
@@ -813,6 +816,8 @@ export async function fetchPresetStrategies(): Promise<SavedStrategy[]> {
         return [];
     }
 }
+
+
 
 export async function triggerBacktestRun(): Promise<boolean> {
     try {
