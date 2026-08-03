@@ -93,6 +93,10 @@ const StrategyLab: React.FC = () => {
         }
     });
 
+    // Sort Trade Log by Entry Date descending (newest trades first)
+    allTradesList.sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+
+
 
     // Active strategy metadata
     const activeStrategy = presetStrategies?.find(s => s.name === presetName) || presetStrategies?.[0] || {};

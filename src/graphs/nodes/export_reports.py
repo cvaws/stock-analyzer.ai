@@ -166,6 +166,14 @@ def export_reports(state: GraphState) -> dict:
                 "config": ps.get("config", {}),
             }
 
+    # Aggregate empirical indicator evidence stats from research DB
+    from research.evidence.aggregator import EvidenceAggregator
+    indicator_evidence = []
+    try:
+        indicator_evidence = EvidenceAggregator().compute_indicator_statistics()
+    except Exception as e:
+        logger.warning(f"Could not compute indicator evidence: {e}")
+
     with open(strategy_lab_path, "w") as f:
         json.dump({
             "available_rules": AVAILABLE_RULES,
@@ -174,7 +182,9 @@ def export_reports(state: GraphState) -> dict:
             "all_strategy_results": all_strategy_results,
             "backtest_results": backtest_results,
             "portfolio_summary": portfolio_summary,
+            "indicator_evidence": indicator_evidence,
         }, f, indent=2)
+
 
 
     # Save technical data JSON per ticker for React Dashboard

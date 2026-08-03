@@ -441,21 +441,30 @@ def optimize_strategies(state: GraphState) -> dict:
             logger.info(f"Round {round_idx} for '{target_uni}' complete — no candidate met quality thresholds.")
 
     if promoted_champions:
-        existing_names = {s.get("name") for s in existing_strategies if isinstance(s, dict)}
-        final_list = list(existing_strategies)
+        # Top-K Champion Pruning: Keep strictly 1 top champion per universe in strategies.json to prevent file bloat
+        universe_champions: Dict[str, Dict[str, Any]] = {}
+
+        # Preserve existing strategies indexed by universe
+        for s in existing_strategies:
+            if isinstance(s, dict):
+                u = s.get("universe", "All ETFs")
+                universe_champions[u] = s
+
+        # Override with newly promoted champions
         for champ in promoted_champions:
-            c_name = champ.get("name")
-            if c_name not in existing_names:
-                final_list.append(champ)
-                existing_names.add(c_name)
+            u = champ.get("universe", "All ETFs")
+            universe_champions[u] = champ
+
+        final_list = list(universe_champions.values())
 
         os.makedirs(os.path.dirname(strategies_path), exist_ok=True)
         with open(strategies_path, "w") as f:
             json.dump(final_list, f, indent=2)
         logger.info(f"\n==================================================")
-        logger.info(f"Auto-saved {len(promoted_champions)} Profit-Maximizing Champion Strategies to {strategies_path}.")
+        logger.info(f"Top-K Pruned: Saved {len(final_list)} universe champions to {strategies_path} (archived all past runs in SQLite research_strategies).")
         return {"saved_strategies": final_list}
 
     logger.info("\n==================================================")
     logger.info("Profit optimization complete. No new champions promoted.")
     return {"saved_strategies": existing_strategies}
+

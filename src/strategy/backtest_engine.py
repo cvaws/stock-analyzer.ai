@@ -20,6 +20,8 @@ class SQLStrategyConfig:
     stop_loss_pct: Optional[float] = None
     profit_taking: Optional[List[Dict[str, float]]] = None
     tickers: Optional[List[str]] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 class SQLStrategyEngine:
     def __init__(self, config: SQLStrategyConfig):
@@ -57,6 +59,11 @@ class SQLStrategyEngine:
             if formatted_tickers:
                 universe_filter += f" AND UPPER(i.ticker) IN ({formatted_tickers})"
 
+        if self.config.start_date:
+            universe_filter += f" AND i.date >= '{self.config.start_date}'"
+        if self.config.end_date:
+            universe_filter += f" AND i.date <= '{self.config.end_date}'"
+
         # Construct SQL query evaluating entry and exit boolean conditions natively
         query = f"""
             SELECT 
@@ -77,6 +84,7 @@ class SQLStrategyEngine:
             WHERE 1=1 {universe_filter}
             ORDER BY i.ticker, i.date ASC
         """
+
 
         try:
             df_signals = pd.read_sql_query(query, conn)

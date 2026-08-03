@@ -101,40 +101,51 @@ def calculate_indicators(state: GraphState) -> dict:
             for idx, row in df.iterrows():
                 date_val = str(row["Date"]).split("T")[0].split(" ")[0] if "Date" in row else str(idx).split("T")[0].split(" ")[0]
                 ema_8_val = float(row["EMA8"]) if "EMA8" in row and pd.notna(row["EMA8"]) else 0.0
+                ema_13_val = float(row["EMA13"]) if "EMA13" in row and pd.notna(row["EMA13"]) else 0.0
                 ema_21_val = float(row["EMA21"]) if "EMA21" in row and pd.notna(row["EMA21"]) else 0.0
                 sma_50_val = float(row["SMA50"]) if "SMA50" in row and pd.notna(row["SMA50"]) else 0.0
+                ema_65_val = float(row["EMA65"]) if "EMA65" in row and pd.notna(row["EMA65"]) else 0.0
                 sma_200_val = float(row["SMA200"]) if "SMA200" in row and pd.notna(row["SMA200"]) else 0.0
                 rsi_14_val = float(row["RSI14"]) if "RSI14" in row and pd.notna(row["RSI14"]) else 50.0
                 atr_14_val = float(row["ATR14"]) if "ATR14" in row and pd.notna(row["ATR14"]) else 0.0
+                atr14_pct_val = float(row["ATR14_Pct"]) if "ATR14_Pct" in row and pd.notna(row["ATR14_Pct"]) else 0.0
                 vol_ma20_val = float(row["Vol_MA20"]) if "Vol_MA20" in row and pd.notna(row["Vol_MA20"]) else 0.0
                 vol_ratio_val = float(row["Vol_Ratio"]) if "Vol_Ratio" in row and pd.notna(row["Vol_Ratio"]) else 0.0
+                vol_ma20_ratio_val = float(row["Vol_MA20_Ratio"]) if "Vol_MA20_Ratio" in row and pd.notna(row["Vol_MA20_Ratio"]) else 0.0
                 mrs_d_val = float(row["mrs_daily_index"]) if "mrs_daily_index" in row and pd.notna(row["mrs_daily_index"]) else 0.0
                 mrs_w_val = float(row["mrs_weekly_index"]) if "mrs_weekly_index" in row and pd.notna(row["mrs_weekly_index"]) else 0.0
+                return_20d_pct_val = float(row["Return_20D_Pct"]) if "Return_20D_Pct" in row and pd.notna(row["Return_20D_Pct"]) else 0.0
                 pct_h_val = float(row["pct_off_52wk_high"]) if "pct_off_52wk_high" in row and pd.notna(row["pct_off_52wk_high"]) else 0.0
                 pct_l_val = float(row["pct_off_52wk_low"]) if "pct_off_52wk_low" in row and pd.notna(row["pct_off_52wk_low"]) else 0.0
-                rows_to_insert.append((ticker, date_val, ema_8_val, ema_21_val, sma_50_val, sma_200_val, rsi_14_val, atr_14_val, vol_ma20_val, vol_ratio_val, mrs_d_val, mrs_w_val, pct_h_val, pct_l_val))
+                rows_to_insert.append((ticker, date_val, ema_8_val, ema_13_val, ema_21_val, sma_50_val, ema_65_val, sma_200_val, rsi_14_val, atr_14_val, atr14_pct_val, vol_ma20_val, vol_ratio_val, vol_ma20_ratio_val, mrs_d_val, mrs_w_val, return_20d_pct_val, pct_h_val, pct_l_val))
 
             cursor.executemany("""
                 INSERT INTO etf_daily_indicators (
-                    ticker, date, ema_8, ema_21, sma_50, sma_200, rsi_14, atr_14,
-                    vol_ma20, vol_ratio, mrs_daily_index, mrs_weekly_index, pct_off_52wk_high, pct_off_52wk_low
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ticker, date, ema_8, ema_13, ema_21, sma_50, ema_65, sma_200, rsi_14, atr_14, atr14_pct,
+                    vol_ma20, vol_ratio, vol_ma20_ratio, mrs_daily_index, mrs_weekly_index, return_20d_pct, pct_off_52wk_high, pct_off_52wk_low
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticker, date) DO UPDATE SET
                     ema_8=excluded.ema_8,
+                    ema_13=excluded.ema_13,
                     ema_21=excluded.ema_21,
                     sma_50=excluded.sma_50,
+                    ema_65=excluded.ema_65,
                     sma_200=excluded.sma_200,
                     rsi_14=excluded.rsi_14,
                     atr_14=excluded.atr_14,
+                    atr14_pct=excluded.atr14_pct,
                     vol_ma20=excluded.vol_ma20,
                     vol_ratio=excluded.vol_ratio,
+                    vol_ma20_ratio=excluded.vol_ma20_ratio,
                     mrs_daily_index=excluded.mrs_daily_index,
                     mrs_weekly_index=excluded.mrs_weekly_index,
+                    return_20d_pct=excluded.return_20d_pct,
                     pct_off_52wk_high=excluded.pct_off_52wk_high,
                     pct_off_52wk_low=excluded.pct_off_52wk_low
             """, rows_to_insert)
             conn.commit()
             conn.close()
+
 
 
             technical_indicators[ticker] = {

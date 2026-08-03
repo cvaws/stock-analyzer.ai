@@ -48,15 +48,20 @@ def init_db():
             ticker TEXT,
             date TEXT,
             ema_8 REAL,
+            ema_13 REAL,
             ema_21 REAL,
             sma_50 REAL,
+            ema_65 REAL,
             sma_200 REAL,
             rsi_14 REAL,
             atr_14 REAL,
+            atr14_pct REAL,
             vol_ma20 REAL,
             vol_ratio REAL,
+            vol_ma20_ratio REAL,
             mrs_daily_index REAL,
             mrs_weekly_index REAL,
+            return_20d_pct REAL,
             pct_off_52wk_high REAL,
             pct_off_52wk_low REAL,
             PRIMARY KEY (ticker, date)
@@ -64,9 +69,11 @@ def init_db():
     """)
 
     cursor.execute("""
+
         CREATE TABLE IF NOT EXISTS daily_market_regime (
             date TEXT PRIMARY KEY,
             regime TEXT,
+
             regime_code TEXT,
             confidence REAL,
             canaries_health REAL,
