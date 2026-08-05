@@ -64,9 +64,22 @@ def init_db():
             return_20d_pct REAL,
             pct_off_52wk_high REAL,
             pct_off_52wk_low REAL,
+            supertrend REAL,
+            supertrend_direction INTEGER,
             PRIMARY KEY (ticker, date)
         )
     """)
+
+    # Migration: add supertrend columns if upgrading an existing database
+    for col_def in [
+        ("supertrend", "REAL"),
+        ("supertrend_direction", "INTEGER"),
+    ]:
+        col_name, col_type = col_def
+        try:
+            cursor.execute(f"ALTER TABLE etf_daily_indicators ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass  # Column already exists — safe to ignore
 
     cursor.execute("""
 

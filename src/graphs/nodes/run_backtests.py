@@ -97,7 +97,7 @@ def run_backtests(state: GraphState) -> dict:
             universe=strat.get("universe", "All ETFs"),
             entry_condition=entry_cond,
             exit_condition=exit_cond,
-            max_holding_bars=20,
+            max_holding_bars=999,
             stop_loss_pct=stop_loss_pct,
             profit_taking=profit_taking,
             tickers=strat_tickers

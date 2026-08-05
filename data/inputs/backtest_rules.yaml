@@ -67,6 +67,13 @@ indicators:
       step: 5.0
       allowed_operators: [">=", ">"]
 
+    # Supertrend direction: strictly binary flag — +1 = Uptrend, -1 = Downtrend
+    # Fixed value: the only meaningful entry filter is supertrend_direction = 1 (uptrend)
+    # No range sweep needed — it is not a continuous metric
+    supertrend_direction:
+      fixed_value: 1
+      allowed_operators: ["="]
+
 # ==============================================================================
 # 2. RISK MANAGEMENT & PROFIT TAKING BOUNDS
 # ==============================================================================

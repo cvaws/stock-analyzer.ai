@@ -69,4 +69,17 @@
 - [x] Verify code changes compile cleanly without starting execution run
 
 
-
+## Phase 12: Supertrend Indicator Integration
+- [x] Create `src/indicators/supertrend.py` — Pine Script parity Supertrend (ATR period=10, factor=3.0)
+  - Full historical series via `calculate_supertrend_series(df)` returning `supertrend` + `supertrend_direction` columns
+  - Latest-bar scalar via `calculate_supertrend(df)` dict
+  - Direction convention: `-1` = Uptrend (support), `+1` = Downtrend (resistance), matching Pine Script
+- [x] Export `calculate_supertrend` and `calculate_supertrend_series` from `src/indicators/__init__.py`
+- [x] Add `supertrend REAL` and `supertrend_direction INTEGER` columns to `etf_daily_indicators` SQLite schema in `ingest_etfs.py`
+  - Added `ALTER TABLE` migration guard for existing databases
+- [x] Wire `calculate_supertrend_series` into `src/graphs/nodes/calculate_indicators.py`
+  - Computed per-ticker on full historical df
+  - Persisted to SQLite alongside all other indicator columns
+  - Exposed in `technical_indicators` output dict as `supertrend` and `supertrend_direction`
+- [x] Register `supertrend_direction` in `data/inputs/backtest_rules.yaml` numeric_metrics pool
+  - Backtesting condition: `supertrend_direction < 0` filters for uptrend-only entries

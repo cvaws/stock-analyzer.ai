@@ -10,7 +10,8 @@ from indicators import (
     calculate_mansfield_rs,
     calculate_marketsmith_rs_rating,
     calculate_rs_breakout_dot,
-    calculate_rsi
+    calculate_rsi,
+    calculate_supertrend_series
 )
 from indicators.columns import (
     calculate_ma_status,
@@ -44,6 +45,29 @@ def calculate_indicators(state: GraphState) -> dict:
             # 1. Apply core moving averages & volatility
             df = calculate_moving_averages(df)
             df = calculate_volatility_and_volume(df)
+
+            # Supertrend on weekly (W-FRI) bars — ohlc4 midpoint
+            # Resample daily OHLCV to weekly, compute supertrend, then ffill back to daily index
+            date_col_present = "Date" in df.columns
+            df_w_st = (
+                df.resample("W-FRI", on="Date")
+                .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+                .dropna(subset=["Close"])
+                if date_col_present
+                else df.resample("W-FRI")
+                .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+                .dropna(subset=["Close"])
+            )
+            df_w_st = calculate_supertrend_series(df_w_st, atr_period=10, factor=3.0)
+            # Forward-fill weekly supertrend values back onto the daily index
+            if date_col_present:
+                df["supertrend"] = df_w_st["supertrend"].reindex(df["Date"]).values
+                df["supertrend"] = pd.Series(df["supertrend"].values, index=df.index).ffill()
+                df["supertrend_direction"] = df_w_st["supertrend_direction"].reindex(df["Date"]).values
+                df["supertrend_direction"] = pd.Series(df["supertrend_direction"].values, index=df.index).ffill()
+            else:
+                df["supertrend"] = df_w_st["supertrend"].reindex(df.index, method="ffill")
+                df["supertrend_direction"] = df_w_st["supertrend_direction"].reindex(df.index, method="ffill")
 
             latest = df.iloc[-1]
             latest_close = float(latest["Close"])
@@ -117,13 +141,16 @@ def calculate_indicators(state: GraphState) -> dict:
                 return_20d_pct_val = float(row["Return_20D_Pct"]) if "Return_20D_Pct" in row and pd.notna(row["Return_20D_Pct"]) else 0.0
                 pct_h_val = float(row["pct_off_52wk_high"]) if "pct_off_52wk_high" in row and pd.notna(row["pct_off_52wk_high"]) else 0.0
                 pct_l_val = float(row["pct_off_52wk_low"]) if "pct_off_52wk_low" in row and pd.notna(row["pct_off_52wk_low"]) else 0.0
-                rows_to_insert.append((ticker, date_val, ema_8_val, ema_13_val, ema_21_val, sma_50_val, ema_65_val, sma_200_val, rsi_14_val, atr_14_val, atr14_pct_val, vol_ma20_val, vol_ratio_val, vol_ma20_ratio_val, mrs_d_val, mrs_w_val, return_20d_pct_val, pct_h_val, pct_l_val))
+                st_val = float(row["supertrend"]) if "supertrend" in row and pd.notna(row["supertrend"]) else None
+                st_dir_val = int(row["supertrend_direction"]) if "supertrend_direction" in row and pd.notna(row["supertrend_direction"]) else None
+                rows_to_insert.append((ticker, date_val, ema_8_val, ema_13_val, ema_21_val, sma_50_val, ema_65_val, sma_200_val, rsi_14_val, atr_14_val, atr14_pct_val, vol_ma20_val, vol_ratio_val, vol_ma20_ratio_val, mrs_d_val, mrs_w_val, return_20d_pct_val, pct_h_val, pct_l_val, st_val, st_dir_val))
 
             cursor.executemany("""
                 INSERT INTO etf_daily_indicators (
                     ticker, date, ema_8, ema_13, ema_21, sma_50, ema_65, sma_200, rsi_14, atr_14, atr14_pct,
-                    vol_ma20, vol_ratio, vol_ma20_ratio, mrs_daily_index, mrs_weekly_index, return_20d_pct, pct_off_52wk_high, pct_off_52wk_low
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    vol_ma20, vol_ratio, vol_ma20_ratio, mrs_daily_index, mrs_weekly_index, return_20d_pct,
+                    pct_off_52wk_high, pct_off_52wk_low, supertrend, supertrend_direction
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticker, date) DO UPDATE SET
                     ema_8=excluded.ema_8,
                     ema_13=excluded.ema_13,
@@ -141,7 +168,9 @@ def calculate_indicators(state: GraphState) -> dict:
                     mrs_weekly_index=excluded.mrs_weekly_index,
                     return_20d_pct=excluded.return_20d_pct,
                     pct_off_52wk_high=excluded.pct_off_52wk_high,
-                    pct_off_52wk_low=excluded.pct_off_52wk_low
+                    pct_off_52wk_low=excluded.pct_off_52wk_low,
+                    supertrend=excluded.supertrend,
+                    supertrend_direction=excluded.supertrend_direction
             """, rows_to_insert)
             conn.commit()
             conn.close()
@@ -171,6 +200,8 @@ def calculate_indicators(state: GraphState) -> dict:
                 "rs_rating": rs_rating,
                 "rs_new_high_250": rs_breakout,
                 "rsi14": rsi_val,
+                "supertrend": round(float(latest["supertrend"]), 4) if pd.notna(latest.get("supertrend")) else None,
+                "supertrend_direction": int(latest["supertrend_direction"]) if pd.notna(latest.get("supertrend_direction")) else None,
                 "df": df
             }
             ticker_data[ticker] = df

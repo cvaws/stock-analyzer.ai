@@ -45,12 +45,16 @@ class StrategyGenerator:
         vol_vals = yaml_loader.get_indicator_values_array("vol_ratio")
         vol_val = random.choice(vol_vals) if vol_vals else 1.1
 
+        st_dir_vals = yaml_loader.get_indicator_values_array("supertrend_direction")
+        st_dir_val = int(st_dir_vals[0]) if st_dir_vals else 1  # always 1 (uptrend)
+
         rs_mom_pool = [
             Rule("rs_daily", RuleCategory.RELATIVE_STRENGTH, "mrs_daily_index", RuleOperator.GTE, mrs_d_val),
             Rule("rs_weekly", RuleCategory.RELATIVE_STRENGTH, "mrs_weekly_index", RuleOperator.GTE, mrs_w_val),
             Rule("mom_rsi", RuleCategory.MOMENTUM, "rsi_14", RuleOperator.GT, rsi_val),
             Rule("mom_atr", RuleCategory.MOMENTUM, "atr14_pct", RuleOperator.GT, atr_val),
             Rule("mom_vol", RuleCategory.MOMENTUM, "vol_ratio", RuleOperator.GT, vol_val),
+            Rule("st_uptrend", RuleCategory.TREND, "supertrend_direction", RuleOperator.EQ, st_dir_val),
         ]
         rs_mom = random.sample(rs_mom_pool, k=random.randint(1, 3))
 

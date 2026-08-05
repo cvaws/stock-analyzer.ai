@@ -6,6 +6,7 @@ from indicators.mansfield_rs import (
     calculate_rs_breakout_dot
 )
 from indicators.rsi import calculate_rsi, calculate_rsi_series
+from indicators.supertrend import calculate_supertrend, calculate_supertrend_series
 from indicators.columns.pct_off_52wk_high import calculate_pct_off_52wk_high, calculate_pct_off_52wk_high_series
 from indicators.columns.pct_off_52wk_low import calculate_pct_off_52wk_low, calculate_pct_off_52wk_low_series
 from indicators.columns import (
@@ -28,5 +29,7 @@ __all__ = [
     "calculate_pct_off_52wk_low_series",
     "calculate_ma_status",
     "calculate_ma_column_flags",
-    "calculate_performance_returns"
+    "calculate_performance_returns",
+    "calculate_supertrend",
+    "calculate_supertrend_series"
 ]

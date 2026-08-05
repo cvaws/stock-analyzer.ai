@@ -47,10 +47,16 @@ class YAMLBacktestRulesLoader:
         return self.config.get("indicators", {}).get("numeric_metrics", {})
 
     def get_indicator_values_array(self, metric_name: str) -> List[float]:
-        """Generates dynamic numpy array of values for a metric based on min, max, step."""
+        """Generates dynamic numpy array of values for a metric based on min, max, step.
+        For binary / fixed-value indicators (e.g. supertrend_direction), returns [fixed_value]
+        directly without range sweeping."""
         metric_cfg = self.get_numeric_metrics().get(metric_name, {})
         if not metric_cfg:
             return [0.0]
+
+        # Binary / fixed-value indicator — no range sweep needed
+        if "fixed_value" in metric_cfg:
+            return [float(metric_cfg["fixed_value"])]
 
         mn = float(metric_cfg.get("min", 0.0))
         mx = float(metric_cfg.get("max", 100.0))
