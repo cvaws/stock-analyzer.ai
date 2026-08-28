@@ -1,0 +1,4 @@
+2026-08-11 16:17:44,938 [WARNING] graphs.nodes.calculate_indicators: SPY benchmark data missing or insufficient.
+2026-08-11 16:17:44,941 [INFO] graphs.nodes.run_backtests: Portfolio simulation config: starting_capital=$100,000, max_positions=5, position_size=20% of equity, cash_reserve=10%
+2026-08-11 16:17:44,943 [INFO] graphs.nodes.run_backtests:   [RS Strategy] Portfolio: $100,000 → $100,000.00 (+0.00%) | MaxDD: 0.0% | Taken: 0 / Skipped: 0
+2026-08-11 16:17:44,950 [WARNING] graphs.nodes.export_reports: Could not compute indicator evidence: no such table: research_experiments

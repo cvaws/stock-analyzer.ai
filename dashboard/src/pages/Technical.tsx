@@ -10,6 +10,17 @@ interface TechnicalProps {
     rsData?: RSStock;
 }
 
+export interface ExtendedThemeStockData extends ThemeStockData {
+    dailyChangePct?: number;
+    changeW?: number;
+    changeM?: number;
+    aboveEma8?: boolean;
+    aboveEma21?: boolean;
+    aboveSma50?: boolean;
+    supertrendDirection?: number;
+    supertrend?: number;
+}
+
 const Technical: React.FC<TechnicalProps> = ({ symbol, onSymbolChange, rsData }) => {
     const [searchInput, setSearchInput] = useState(symbol);
     const [headerData, setHeaderData] = useState<StockHeaderData | null>(null);
@@ -19,9 +30,81 @@ const Technical: React.FC<TechnicalProps> = ({ symbol, onSymbolChange, rsData })
     const [activeInfo, setActiveInfo] = useState<string | null>(null);
 
     // Watchlist Sidebar State
-    const [watchlist, setWatchlist] = useState<ThemeStockData[]>([]);
+    const [watchlist, setWatchlist] = useState<ExtendedThemeStockData[]>([]);
     const [watchlistSearch, setWatchlistSearch] = useState<string>('');
     const [selectedGroup, setSelectedGroup] = useState<string>('All');
+    const [watchlistSortField, setWatchlistSortField] = useState<string>('symbol');
+    const [watchlistSortAsc, setWatchlistSortAsc] = useState<boolean>(true);
+
+    // Render ThinkOrSwim MA parity badge
+    const renderMaBadge = (above: boolean | undefined, themeColor?: 'green' | 'red' | 'yellow') => {
+        const isAbove = above === true;
+
+        let bgColor = isAbove ? '#064e3b' : '#7f1d1d';
+        let textColor = isAbove ? '#10b981' : '#f87171';
+
+        if (themeColor === 'yellow') {
+            bgColor = '#78350f'; 
+            textColor = '#fbbf24'; 
+        } else if (themeColor === 'green') {
+            bgColor = '#064e3b';
+            textColor = '#10b981';
+        } else if (themeColor === 'red') {
+            bgColor = '#7f1d1d';
+            textColor = '#f87171';
+        }
+
+        return (
+            <span style={{
+                backgroundColor: bgColor,
+                color: textColor,
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                display: 'inline-block',
+                textAlign: 'center',
+                minWidth: '22px'
+            }}>
+                {isAbove ? '✓' : 'x'}
+            </span>
+        );
+    };
+
+    const renderSupertrendBadgeForStock = (stock: ExtendedThemeStockData) => {
+        const price = stock.price;
+        const supertrend = stock.supertrend;
+        const direction = stock.supertrendDirection;
+        
+        if (price === undefined || supertrend === undefined || direction === undefined) {
+            return renderMaBadge(false, 'red');
+        }
+        
+        const dailyBullish = price > supertrend;
+        const weeklyBullish = direction === 1;
+        
+        if (dailyBullish && weeklyBullish) {
+            return renderMaBadge(true, 'green');
+        } else if (!dailyBullish && !weeklyBullish) {
+            return renderMaBadge(false, 'red');
+        } else {
+            return renderMaBadge(dailyBullish, 'yellow');
+        }
+    };
+
+    const getRsColor = (colorFlag?: string, val?: any) => {
+        if (colorFlag === 'MAGENTA') return '#d946ef';
+        if (colorFlag === 'CYAN') return '#06b6d4';
+        if (colorFlag === 'GREEN' || (Number(val) || 0) >= 0) return '#10b981';
+        return '#ef4444';
+    };
+
+    const formatPct = (val: number | string | undefined | null) => {
+        if (val === undefined || val === null || val === 'N/A') return '—';
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        if (isNaN(num)) return '—';
+        return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
+    };
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,6 +149,53 @@ const Technical: React.FC<TechnicalProps> = ({ symbol, onSymbolChange, rsData })
                              (selectedGroup === 'Leveraged' && item.sector.toLowerCase().includes('leveraged'));
         return matchesSymbol && matchesGroup;
     });
+
+    const getValForSort = (item: ExtendedThemeStockData, field: string): any => {
+        if (field === 'symbol') return item.symbol;
+        if (field === 'sector') return item.sector;
+        if (field === 'price') return item.price ?? 0;
+        if (field === 'dailyChangePct') return item.dailyChangePct ?? 0;
+        if (field === 'supertrend') {
+            const price = item.price ?? 0;
+            const supertrend = item.supertrend ?? 0;
+            const direction = item.supertrendDirection ?? -1;
+            const dailyBullish = price > supertrend;
+            const weeklyBullish = direction === 1;
+            if (dailyBullish && weeklyBullish) return 2;
+            if (!dailyBullish && !weeklyBullish) return 0;
+            return 1;
+        }
+        if (field === 'rsWeeklyPct') {
+            const val = item.rsWeeklyPct;
+            if (val === undefined || val === null || val === 'N/A') return -999999;
+            const num = typeof val === 'string' ? parseFloat(val) : val;
+            return isNaN(num) ? -999999 : num;
+        }
+        return '';
+    };
+
+    const sortedWatchlist = [...filteredWatchlist].sort((a, b) => {
+        const valA = getValForSort(a, watchlistSortField);
+        const valB = getValForSort(b, watchlistSortField);
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            return watchlistSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        return watchlistSortAsc ? (valA - valB) : (valB - valA);
+    });
+
+    const handleWatchlistHeaderClick = (field: string) => {
+        if (watchlistSortField === field) {
+            setWatchlistSortAsc(!watchlistSortAsc);
+        } else {
+            setWatchlistSortField(field);
+            setWatchlistSortAsc(true);
+        }
+    };
+
+    const renderSortIndicator = (field: string) => {
+        if (watchlistSortField !== field) return null;
+        return watchlistSortAsc ? ' ▲' : ' ▼';
+    };
 
     // --- Scoring Engine ---
     const calculateScores = () => {
@@ -201,7 +331,7 @@ const Technical: React.FC<TechnicalProps> = ({ symbol, onSymbolChange, rsData })
             {/* Main Area: Split Screen (Left: Candlestick + Indicators Chart, Right: Watchlist Widget) */}
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'minmax(0, 3.2fr) 1fr',
+                gridTemplateColumns: 'minmax(0, 4.5fr) 1fr',
                 gap: '0.75rem',
                 flex: 1,
                 minHeight: 0,
@@ -289,13 +419,43 @@ const Technical: React.FC<TechnicalProps> = ({ symbol, onSymbolChange, rsData })
                         </div>
                     </div>
 
+                    {/* Watchlist Header Table Columns */}
+                    <div style={{
+                        display: 'flex',
+                        padding: '0.5rem 1rem',
+                        borderBottom: '1px solid var(--border-color)',
+                        background: 'rgba(0,0,0,0.1)',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                    }}>
+                        <div onClick={() => handleWatchlistHeaderClick('symbol')} style={{ width: '16%', cursor: 'pointer', userSelect: 'none' }}>
+                            Sym{renderSortIndicator('symbol')}
+                        </div>
+                        <div onClick={() => handleWatchlistHeaderClick('sector')} style={{ width: '18%', cursor: 'pointer', userSelect: 'none' }}>
+                            Group{renderSortIndicator('sector')}
+                        </div>
+                        <div onClick={() => handleWatchlistHeaderClick('price')} style={{ width: '16%', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                            Last{renderSortIndicator('price')}
+                        </div>
+                        <div onClick={() => handleWatchlistHeaderClick('dailyChangePct')} style={{ width: '16%', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                            Chg%{renderSortIndicator('dailyChangePct')}
+                        </div>
+                        <div onClick={() => handleWatchlistHeaderClick('supertrend')} style={{ width: '16%', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                            ST{renderSortIndicator('supertrend')}
+                        </div>
+                        <div onClick={() => handleWatchlistHeaderClick('rsWeeklyPct')} style={{ width: '18%', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                            RS W%{renderSortIndicator('rsWeeklyPct')}
+                        </div>
+                    </div>
+
                     {/* Ticker List Container */}
                     <div style={{ flex: 1, overflowY: 'auto' }}>
-                        {filteredWatchlist.map((item) => {
+                        {sortedWatchlist.map((item) => {
                             const isSelected = item.symbol.toUpperCase() === symbol.toUpperCase();
                             const chg = parseFloat((item.dailyChangePct ?? (item as any).changePercent ?? 0) as any) || 0;
-                            const rsRank = item.rsScore || item.rsPercentile || 'N/A';
-                            const displayName = item.companyName || (item as any).name || item.symbol;
 
                             return (
                                 <div
@@ -304,39 +464,39 @@ const Technical: React.FC<TechnicalProps> = ({ symbol, onSymbolChange, rsData })
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '0.65rem 1rem',
+                                        padding: '0.55rem 1rem',
                                         borderBottom: '1px solid rgba(255,255,255,0.04)',
                                         cursor: 'pointer',
                                         background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
                                         borderLeft: isSelected ? '4px solid var(--accent-primary)' : '4px solid transparent',
-                                        transition: 'background 0.2s'
+                                        transition: 'background 0.2s',
+                                        fontSize: '0.78rem'
                                     }}
                                 >
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: isSelected ? '#3b82f6' : '#fff' }}>
-                                                {item.symbol}
-                                            </span>
-                                            <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-muted)' }}>
-                                                {item.sector}
-                                            </span>
-                                        </div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
-                                            {displayName}
-                                        </div>
+                                    <div style={{ width: '16%', fontWeight: 800, color: isSelected ? '#3b82f6' : '#fff' }}>
+                                        {item.symbol}
                                     </div>
 
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
-                                            ${parseFloat(item.price as any || 0).toFixed(2)}
-                                        </div>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: chg >= 0 ? '#10b981' : '#ef4444' }}>
-                                            {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
-                                        </div>
-                                        <div style={{ fontSize: '0.65rem', color: '#06b6d4', fontWeight: 600 }}>
-                                            RS: {rsRank}
-                                        </div>
+                                    <div style={{ width: '18%', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {item.sector.replace('_', ' ')}
+                                    </div>
+                                    
+                                    <div style={{ width: '16%', textAlign: 'right', fontWeight: 700, color: '#fff' }}>
+                                        ${parseFloat(item.price as any || 0).toFixed(2)}
+                                    </div>
+                                    
+                                    <div style={{ width: '16%', textAlign: 'right', fontWeight: 700, color: chg >= 0 ? '#10b981' : '#ef4444' }}>
+                                        {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
+                                    </div>
+
+                                    <div style={{ width: '16%', display: 'flex', justifyContent: 'center' }}>
+                                        <span style={{ transform: 'scale(0.85)', display: 'inline-flex' }}>
+                                            {renderSupertrendBadgeForStock(item)}
+                                        </span>
+                                    </div>
+                                    
+                                    <div style={{ width: '18%', textAlign: 'right', color: getRsColor((item as any).rsWeeklyColor, item.rsWeeklyPct), fontWeight: 700 }}>
+                                        {formatPct(item.rsWeeklyPct)}
                                     </div>
                                 </div>
                             );

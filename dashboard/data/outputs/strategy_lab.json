@@ -1,0 +1,203 @@
+{
+  "available_rules": [
+    {
+      "id": "price_above_ema8",
+      "name": "Price > EMA8",
+      "category": "Trend",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "price_above_ema21",
+      "name": "Price > EMA21",
+      "category": "Trend",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "price_above_sma50",
+      "name": "Price > SMA50",
+      "category": "Trend",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "price_above_sma200",
+      "name": "Price > SMA200",
+      "category": "Trend",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "ema8_above_ema21",
+      "name": "EMA8 > EMA21",
+      "category": "Trend Alignment",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "ema21_above_sma50",
+      "name": "EMA21 > SMA50",
+      "category": "Trend Alignment",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "sma50_above_sma200",
+      "name": "SMA50 > SMA200 (Stage 2)",
+      "category": "Trend Alignment",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "daily_mrs_above_zero",
+      "name": "Daily MRS Index > 0",
+      "category": "Relative Strength",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "weekly_mansfield_rs",
+      "name": "Weekly MRS Index > 0",
+      "category": "Relative Strength",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "rs_rating_min",
+      "name": "MarketSmith RS Rating",
+      "category": "Relative Strength",
+      "value_type": "number",
+      "default_op": ">=",
+      "default_val": 80
+    },
+    {
+      "id": "rs_new_high_250",
+      "name": "RS 250-Day New High",
+      "category": "Relative Strength",
+      "value_type": "boolean",
+      "default_op": "==",
+      "default_val": true
+    },
+    {
+      "id": "rsi14_min",
+      "name": "RSI (14)",
+      "category": "Momentum",
+      "value_type": "number",
+      "default_op": ">=",
+      "default_val": 50
+    },
+    {
+      "id": "rel_vol_min",
+      "name": "Relative Volume (Vol / 20MA)",
+      "category": "Momentum",
+      "value_type": "number",
+      "default_op": ">=",
+      "default_val": 1.0
+    },
+    {
+      "id": "pct_off_52wk_high_min",
+      "name": "% off 52-Week High",
+      "category": "Momentum",
+      "value_type": "number",
+      "default_op": ">=",
+      "default_val": -10.0
+    }
+  ],
+  "categories": [
+    "Trend",
+    "Trend Alignment",
+    "Relative Strength",
+    "Momentum"
+  ],
+  "saved_strategies": [
+    {
+      "name": "RS Strategy",
+      "universe": "Canaries",
+      "entry_rules": [
+        {
+          "conditions": "ema_8 > ema_21 AND rsi_14 >= 50 AND mrs_daily_index >= 0.0"
+        }
+      ],
+      "exit_rules": [
+        {
+          "conditions": "close < ema_21 OR mrs_daily_index < 0.0"
+        }
+      ]
+    }
+  ],
+  "all_strategy_results": {
+    "RS Strategy": {
+      "portfolio_simulation": {
+        "starting_capital": 100000.0,
+        "ending_capital": 100000.0,
+        "total_return_pct": 0.0,
+        "max_drawdown_pct": 0.0,
+        "total_capital_deployed": 0.0,
+        "capital_utilization_pct": 0.0,
+        "avg_positions_open": 0.0,
+        "trades_taken": 0,
+        "trades_skipped": 0,
+        "equity_curve": [],
+        "config": {
+          "starting_capital": 100000.0,
+          "max_concurrent_positions": 5,
+          "position_size_pct": 0.2,
+          "cash_reserve_pct": 0.1,
+          "commission_per_trade": 0.0
+        }
+      }
+    }
+  },
+  "backtest_results": {
+    "portfolio_simulation": {
+      "starting_capital": 100000.0,
+      "ending_capital": 100000.0,
+      "total_return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "total_capital_deployed": 0.0,
+      "capital_utilization_pct": 0.0,
+      "avg_positions_open": 0.0,
+      "trades_taken": 0,
+      "trades_skipped": 0,
+      "equity_curve": [],
+      "config": {
+        "starting_capital": 100000.0,
+        "max_concurrent_positions": 5,
+        "position_size_pct": 0.2,
+        "cash_reserve_pct": 0.1,
+        "commission_per_trade": 0.0
+      }
+    }
+  },
+  "portfolio_summary": {
+    "RS Strategy": {
+      "starting_capital": 100000.0,
+      "ending_capital": 100000.0,
+      "total_return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "total_capital_deployed": 0.0,
+      "capital_utilization_pct": 0.0,
+      "trades_taken": 0,
+      "trades_skipped": 0,
+      "equity_curve": [],
+      "config": {
+        "starting_capital": 100000.0,
+        "max_concurrent_positions": 5,
+        "position_size_pct": 0.2,
+        "cash_reserve_pct": 0.1,
+        "commission_per_trade": 0.0
+      }
+    }
+  },
+  "indicator_evidence": []
+}

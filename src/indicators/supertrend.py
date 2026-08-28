@@ -11,7 +11,7 @@ Customisation applied:
 
 Pine Script logic:
     atrPeriod = 10
-    factor    = 3.0
+    factor    = 2.61
     [supertrend, direction] = ta.supertrend(factor, atrPeriod)
 
     Pine Script direction: -1 = Uptrend, +1 = Downtrend  (counterintuitive, NOT used here)
@@ -60,7 +60,7 @@ def _calculate_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: in
 def calculate_supertrend_series(
     df: pd.DataFrame,
     atr_period: int = 10,
-    factor: float = 3.0,
+    factor: float = 2.61,
 ) -> pd.DataFrame:
     """
     Pine Script Parity (data/pine_indicators/supertrend.pine):
@@ -90,7 +90,7 @@ def calculate_supertrend_series(
     atr_period : int
         ATR smoothing period. Default: 10 (Pine Script default).
     factor : float
-        ATR multiplier. Default: 3.0 (Pine Script default).
+        ATR multiplier. Default: 2.61.
 
     Returns
     -------
@@ -176,7 +176,7 @@ def calculate_supertrend_series(
 def calculate_supertrend(
     df: pd.DataFrame,
     atr_period: int = 10,
-    factor: float = 3.0,
+    factor: float = 2.61,
 ) -> dict:
     """
     Returns the latest-bar Supertrend values as a scalar dict.
@@ -188,7 +188,7 @@ def calculate_supertrend(
     atr_period : int
         ATR smoothing period. Default: 10.
     factor : float
-        ATR multiplier. Default: 3.0.
+        ATR multiplier. Default: 2.61.
 
     Returns
     -------

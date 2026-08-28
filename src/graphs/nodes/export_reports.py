@@ -61,6 +61,8 @@ def export_reports(state: GraphState) -> dict:
         above_e21 = info.get("above_ema21", False)
         above_s50 = info.get("above_sma50", False)
         pct_52wk = info.get("pct_off_52wk_high", 0.0)
+        st_direction = info.get("supertrend_direction", None)  # +1 = Uptrend, -1 = Downtrend
+        st_value = info.get("supertrend", None)
         
         scan_rows.append({
             "Ticker": ticker,
@@ -107,13 +109,17 @@ def export_reports(state: GraphState) -> dict:
             "rsScore": mrs_index,
             "rsDailyPct": rs_daily_pct,
             "rsDailyColor": rs_daily_color,
+            "rsDailyVelocity": info.get("rs_daily_velocity", 0.0),
             "rsWeeklyPct": rs_weekly_pct,
             "rsWeeklyColor": rs_weekly_color,
+            "rsWeeklyVelocity": info.get("rs_weekly_velocity", 0.0),
             "rsRating": rs_rating,
             "mrsIndex": mrs_index,
             "aboveEma8": above_e8,
             "aboveEma21": above_e21,
             "aboveSma50": above_s50,
+            "supertrendDirection": st_direction,
+            "supertrend": st_value,
             "stage2Trend": info.get("stage2_trend"),
             "rsNewHigh250": info.get("rs_new_high_250"),
             "rsi14": info.get("rsi14"),

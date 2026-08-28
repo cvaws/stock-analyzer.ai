@@ -58,7 +58,7 @@ def calculate_indicators(state: GraphState) -> dict:
                 .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
                 .dropna(subset=["Close"])
             )
-            df_w_st = calculate_supertrend_series(df_w_st, atr_period=10, factor=3.0)
+            df_w_st = calculate_supertrend_series(df_w_st, atr_period=10, factor=2.61)
             # Forward-fill weekly supertrend values back onto the daily index
             if date_col_present:
                 df["supertrend"] = df_w_st["supertrend"].reindex(df["Date"]).values
@@ -80,6 +80,23 @@ def calculate_indicators(state: GraphState) -> dict:
             # ThinkOrSwim RS Phase Performance Parity (Daily & Weekly)
             rs_daily_res = calculate_rs_phase_performance(df, spy_df, length=52, timeframe='daily')
             rs_weekly_res = calculate_rs_phase_performance(df, spy_df, length=52, timeframe='weekly')
+
+            # Calculate RS Velocity (Momentum Acceleration)
+            rs_daily_1d_ago = 0.0
+            if len(df) > 1:
+                df_1d = df.iloc[:-1]
+                spy_1d = spy_df.iloc[:-1] if spy_df is not None else None
+                rs_daily_1d_res = calculate_rs_phase_performance(df_1d, spy_1d, length=52, timeframe='daily')
+                rs_daily_1d_ago = rs_daily_1d_res["result"]
+            rs_daily_velocity = rs_daily_res["result"] - rs_daily_1d_ago
+
+            rs_weekly_5d_ago = 0.0
+            if len(df) > 5:
+                df_5d = df.iloc[:-5]
+                spy_5d = spy_df.iloc[:-5] if spy_df is not None else None
+                rs_weekly_5d_res = calculate_rs_phase_performance(df_5d, spy_5d, length=52, timeframe='weekly')
+                rs_weekly_5d_ago = rs_weekly_5d_res["result"]
+            rs_weekly_velocity = rs_weekly_res["result"] - rs_weekly_5d_ago
 
             # 3. Apply Pine Script Parity functions (length=52 for 52-period / 52-week relative strength)
             mrs_series = calculate_mansfield_rs(df, spy_df, length=52)
@@ -185,8 +202,10 @@ def calculate_indicators(state: GraphState) -> dict:
                 "pct_off_52wk_high": pct_52wk_high,
                 "rs_daily_pct": rs_daily_res["result"],
                 "rs_daily_color": rs_daily_res["color_flag"],
+                "rs_daily_velocity": rs_daily_velocity,
                 "rs_weekly_pct": rs_weekly_res["result"],
                 "rs_weekly_color": rs_weekly_res["color_flag"],
+                "rs_weekly_velocity": rs_weekly_velocity,
                 "ema8": round(float(latest["EMA8"]), 2) if pd.notna(latest["EMA8"]) else None,
                 "ema21": round(float(latest["EMA21"]), 2) if pd.notna(latest["EMA21"]) else None,
                 "sma50": round(float(latest["SMA50"]), 2) if pd.notna(latest["SMA50"]) else None,

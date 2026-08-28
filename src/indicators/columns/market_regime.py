@@ -33,6 +33,8 @@ def calculate_etf_health_score(
     ema8 = float(latest["EMA8"]) if "EMA8" in latest and pd.notna(latest["EMA8"]) else 0.0
     ema21 = float(latest["EMA21"]) if "EMA21" in latest and pd.notna(latest["EMA21"]) else 0.0
     sma50 = float(latest["SMA50"]) if "SMA50" in latest and pd.notna(latest["SMA50"]) else 0.0
+    st_val = float(latest["supertrend"]) if "supertrend" in latest and pd.notna(latest["supertrend"]) else None
+    st_dir = float(latest["supertrend_direction"]) if "supertrend_direction" in latest and pd.notna(latest["supertrend_direction"]) else None
     
     score = 0
     if group_name == "Canaries":
@@ -40,16 +42,19 @@ def calculate_etf_health_score(
         if close_price > sma50: score += 1
         if ema21 > sma50: score += 1
         if ema8 > ema21: score += 1
+        if st_val is not None and st_dir is not None and close_price > st_val and st_dir == 1: score += 1
     else:
         if close_price > ema21: score += 1
         if close_price > sma50: score += 1
         if rs_daily_pct >= 0.0: score += 1
         if rs_weekly_pct >= 0.0: score += 1
+        if st_val is not None and st_dir is not None and close_price > st_val and st_dir == 1: score += 1
         
     is_healthy = score >= 3
     
     status_map = {
-        4: "Strong",
+        5: "Strong",
+        4: "Healthy",
         3: "Healthy",
         2: "Neutral",
         1: "Weak",
@@ -182,7 +187,9 @@ def calculate_and_save_historical_market_regime(
             i.ema_21,
             i.sma_50,
             i.mrs_daily_index,
-            i.mrs_weekly_index
+            i.mrs_weekly_index,
+            i.supertrend,
+            i.supertrend_direction
         FROM etf_daily_indicators i
         JOIN ohlcv o ON i.ticker = o.ticker AND i.date = o.date
         LEFT JOIN etf_metadata m ON i.ticker = m.ticker
@@ -219,6 +226,8 @@ def calculate_and_save_historical_market_regime(
         sma50 = row["sma_50"]
         mrs_d = row["mrs_daily_index"]
         mrs_w = row["mrs_weekly_index"]
+        st_val = row["supertrend"]
+        st_dir = row["supertrend_direction"]
         
         score = 0
         if cat == "Canaries":
@@ -226,11 +235,13 @@ def calculate_and_save_historical_market_regime(
             if pd.notna(close) and pd.notna(sma50) and close > sma50: score += 1
             if pd.notna(ema21) and pd.notna(sma50) and ema21 > sma50: score += 1
             if pd.notna(ema8) and pd.notna(ema21) and ema8 > ema21: score += 1
+            if pd.notna(close) and pd.notna(st_val) and pd.notna(st_dir) and close > st_val and st_dir == 1: score += 1
         else:
             if pd.notna(close) and pd.notna(ema21) and close > ema21: score += 1
             if pd.notna(close) and pd.notna(sma50) and close > sma50: score += 1
             if pd.notna(mrs_d) and mrs_d >= 0.0: score += 1
             if pd.notna(mrs_w) and mrs_w >= 0.0: score += 1
+            if pd.notna(close) and pd.notna(st_val) and pd.notna(st_dir) and close > st_val and st_dir == 1: score += 1
         return score >= 3, cat
 
     df_all["is_healthy"], df_all["norm_cat"] = zip(*df_all.apply(check_healthy, axis=1))

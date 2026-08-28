@@ -83,3 +83,44 @@
   - Exposed in `technical_indicators` output dict as `supertrend` and `supertrend_direction`
 - [x] Register `supertrend_direction` in `data/inputs/backtest_rules.yaml` numeric_metrics pool
   - Backtesting condition: `supertrend_direction < 0` filters for uptrend-only entries
+
+
+## Phase 13: Market Page — Replace Description Column with Supertrend Badge
+
+### Context
+`supertrend` and `supertrend_direction` (+1 = Uptrend, -1 = Downtrend) are already fully computed
+per-ticker in `technical_indicators` (via `calculate_indicators.py`) and the convention is
+**+1 = Uptrend (bullish), -1 = Downtrend (bearish)** (positive = bullish, matching `supertrend.py` docstring).
+However they are **not yet forwarded** into `etfs_tracker.json` by `export_reports.py`, and the
+dashboard `ExtendedThemeStockData` interface has no `supertrendDirection` field yet.
+
+### Backend — `src/graphs/nodes/export_reports.py`
+- [x] In `export_reports()`, read `supertrend_direction` from `info` (just like `above_e8`):
+  ```python
+  st_direction = info.get("supertrend_direction", None)   # +1 Uptrend | -1 Downtrend | None
+  ```
+- [x] Add `"supertrendDirection": st_direction` to the `theme_tracker_items` dict (alongside the
+  existing `aboveEma8`, `aboveEma21`, `aboveSma50` fields) so it lands in `etfs_tracker.json`
+
+### Frontend — `dashboard/src/pages/Market.tsx`
+- [x] Add `supertrendDirection?: number` field to the `ExtendedThemeStockData` interface
+- [x] Remove the **Description** `<th>` header (line ~236) and its corresponding `<td>` data cell
+  (line ~259 — the `{stock.symbol} ETF` placeholder cell)
+- [x] Add a **Supertrend** `<th>` header in the same position (non-sortable, centred, like the
+  `8ema` / `21ema` / `50 sma` headers)
+- [x] Add a corresponding `<td>` that calls `renderMaBadge(stock.supertrendDirection === 1)` —
+  same green ✓ / red x badge pattern used for the EMA columns.  Direction +1 (Uptrend) → above
+  (✓ green), -1 or undefined → below (x red)
+
+
+## Phase 14: Market Page — Add Top 3 RS Daily% and RS Weekly% Widgets
+
+### Frontend — `dashboard/src/pages/Market.tsx`
+- [x] Sort `data` (excluding any with invalid or missing values) to calculate:
+  - Top 3 ETFs by `rsDailyPct`
+  - Top 3 ETFs by `rsWeeklyPct`
+- [x] Add two new widgets next to the Supertrend Transitions widget in the header flex row:
+  - **Top 3 RS Daily% Widget**: Green themed, displaying the top 3 ETF symbols along with their parsed daily change % (e.g., `IBIT (+5.4%)`).
+  - **Top 3 RS Weekly% Widget**: Purple/Cyan themed, displaying the top 3 ETF symbols along with their parsed weekly change % (e.g., `SOXL (+12.3%)`).
+- [x] Ensure all 4 widgets in the header row flex-wrap cleanly on different screen sizes.
+
