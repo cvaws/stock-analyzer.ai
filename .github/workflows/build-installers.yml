@@ -88,3 +88,25 @@ jobs:
         with:
           name: StockWave-Windows-x64
           path: dashboard/dist-electron/*.exe
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-mac-arm64, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release with DMG & EXE
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            StockWave-macOS-arm64/*.dmg
+            StockWave-Windows-x64/*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
