@@ -180,12 +180,43 @@ Strategies are defined in JSON format and executed natively in SQLite:
 
 ---
 
-## 9. Summary of Database & Files
+---
+
+## 10. Native Desktop Application & Packaging (`StockWave`)
+
+`stock-analyzer.ai` provides a native desktop application (**StockWave**) powered by **Electron + React + FastAPI Python Sidecar**:
+
+- **Sleek Top Navigation**: Frameless window design with centered navigation pill tabs (**📈 Market Overview**, **⚡ Technical Charts**, **🧬 Strategy Lab**, **⚙️ Settings**) and macOS window drag region.
+- **In-App Live Execution**:
+  - **Market Overview**: "Run Daily Scan" button performs live Yahoo Finance sync and indicator calculations in ~5–8s.
+  - **Strategy Lab**: "⚡ Run Strategy Optimizer" button triggers the multi-process genetic grid search across 71,000 parameter permutations with live SSE streaming progress.
+- **Custom Data Storage Paths**: Users can change their active data directory via **Settings $\rightarrow$ Local Data & Storage** (`📁 Change Data Directory`). The app automatically migrates the database and output files to the chosen directory or cloud folder.
+- **Standalone Distribution (.dmg for macOS / .exe for Windows)**:
+  - Requires **no Python, Node, Git, or terminal tools** for the recipient.
+  - Automatically seeds the bundled SQLite database (`etfs.db`), inputs, and indicators on first launch.
+
+### Building Standalone Installers
+
+```bash
+# 1. Compile the Python sidecar binary
+uv run python scripts/build_sidecar.py
+
+# 2. Package into a macOS drag-and-drop .dmg
+cd dashboard
+npm run desktop:build
+```
+- macOS Output: `dashboard/dist-electron/StockWave-0.0.0-arm64.dmg`
+- Windows Output: `dashboard/dist-electron/StockWave Setup 0.0.0.exe` (or automated via `.github/workflows/build-installers.yml`)
+
+---
+
+## 11. Summary of Database & Files
 
 - **Strategy Inputs**: `data/inputs/strategies.json` (defines preset entry/exit strategies).
+- **Genetic Rules**: `data/inputs/backtest_rules.yaml` (master combinatorial indicator search bounds and operators).
 - **LLM Rules**: `data/inputs/llm_rules.json` (single source of truth for all LLM context — no ETF tickers hardcoded).
 - **Portfolio Config**: `configs/config.yaml` → `portfolio_simulation` block (starting capital, position sizing, max concurrent positions).
-- **Multi-Run Script**: `scripts/run_research_iterations.py` (executes N research iterations and prints top evidence summary).
+- **Sidecar Service**: `src/server.py` (FastAPI backend providing REST and SSE endpoints on port `8765`).
 - **SQLite DB**: `data/db/etfs.db` (contains `ohlcv`, `etf_metadata`, `etf_daily_indicators`, `daily_market_regime`, `research_strategies`, `research_experiments`, `research_experiment_trades`, `research_mutation_history`, and `research_llm_observations`).
 - **Log File**: `logs/stock_analyzer.log` (centralized application and strategy optimizer logging).
 - **Outputs**: `data/outputs/`:
@@ -194,7 +225,8 @@ Strategies are defined in JSON format and executed natively in SQLite:
   - `strategy_lab.json` — strategy registry, backtest results, portfolio_summary, and `indicator_evidence`
   - `tickers/technical/<SYMBOL>.json` — per-ticker OHLCV + indicator history
   - `latest_scan.csv` — tabular scan export
-- **Dashboard App**: `dashboard/` (Vite React app rendering Market, Technical Analysis, and Strategy Lab).
+- **Desktop Dashboard**: `dashboard/` (Vite React + Electron desktop app).
+
 
 
 

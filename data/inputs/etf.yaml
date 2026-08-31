@@ -5,6 +5,8 @@ us_market:
     - IWM
     - SMH
     - SPMO
+    - TLT
+    - VIXY
   leadership:
     - IGV
     - MAGS

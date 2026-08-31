@@ -49,6 +49,17 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* Electron Draggable Window Region */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* Ensure interactive elements inside draggable headers remain clickable */
+button, input, select, textarea, a, .no-drag, [role="button"] {
+  -webkit-app-region: no-drag;
+}
+
 button {
   cursor: pointer;
   border: none;
@@ -60,6 +71,7 @@ a {
   text-decoration: none;
   color: inherit;
 }
+
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {

@@ -21,6 +21,7 @@ def export_reports(state: GraphState) -> dict:
     
     technical_indicators = state.get("technical_indicators", {})
     backtest_results = state.get("backtest_results", {})
+    detected_patterns = state.get("detected_patterns", {})
     etf_universe = state.get("etf_universe", {})
     etf_names = state.get("etf_names", {})
     ai_summary = state.get("ai_market_summary", "")
@@ -48,6 +49,7 @@ def export_reports(state: GraphState) -> dict:
             continue
 
         bt = backtest_results.get(ticker, {})
+        patterns = detected_patterns.get(ticker, {})
         category = ticker_to_category.get(ticker, "General ETF")
         company_name = etf_names.get(ticker, f"{ticker} ETF")
         
@@ -57,12 +59,18 @@ def export_reports(state: GraphState) -> dict:
         pct_d = info.get("pct_change_d", 0.0)
         pct_w = info.get("pct_change_w", 0.0)
         pct_m = info.get("pct_change_m", 0.0)
+        ret_5d = info.get("return_5d", pct_w)
+        ret_10d = info.get("return_10d", pct_w)
         above_e8 = info.get("above_ema8", False)
         above_e21 = info.get("above_ema21", False)
         above_s50 = info.get("above_sma50", False)
         pct_52wk = info.get("pct_off_52wk_high", 0.0)
         st_direction = info.get("supertrend_direction", None)  # +1 = Uptrend, -1 = Downtrend
         st_value = info.get("supertrend", None)
+        vol_ratio = info.get("vol_ratio", 1.0)
+        has_vdu = patterns.get("vdu_signal", False)
+        pct_above_base = patterns.get("pct_above_last_base", 0.0)
+        rrg_quad = info.get("rrg_quadrant", "Lagging")
         
         scan_rows.append({
             "Ticker": ticker,
@@ -71,6 +79,8 @@ def export_reports(state: GraphState) -> dict:
             "Change_D": pct_d,
             "Change_W": pct_w,
             "Change_M": pct_m,
+            "Return_5D": ret_5d,
+            "Return_10D": ret_10d,
             "PctOff52WkHigh": pct_52wk,
             "EMA8": info.get("ema8"),
             "EMA21": info.get("ema21"),
@@ -84,6 +94,10 @@ def export_reports(state: GraphState) -> dict:
             "RS_Rating": rs_rating,
             "RS_Breakout_250": info.get("rs_new_high_250"),
             "RSI14": info.get("rsi14"),
+            "Vol_Ratio": vol_ratio,
+            "Has_VDU": has_vdu,
+            "RRG_Quadrant": rrg_quad,
+            "Pct_Above_Base": pct_above_base,
             "Backtest_WinRate": bt.get("win_rate", 0.0),
             "Backtest_ProfitFactor": bt.get("profit_factor", 0.0),
             "Backtest_Trades": bt.get("total_trades", 0)
@@ -101,6 +115,10 @@ def export_reports(state: GraphState) -> dict:
             "dailyChangePct": pct_d,
             "changeW": pct_w,
             "changeM": pct_m,
+            "return5D": ret_5d,
+            "return10D": ret_10d,
+            "return1M": pct_m,
+            "return3M": pct_m,
             "pctOff52WkHigh": pct_52wk,
             "subIndustry": category,
             "sector": category,
@@ -113,6 +131,7 @@ def export_reports(state: GraphState) -> dict:
             "rsWeeklyPct": rs_weekly_pct,
             "rsWeeklyColor": rs_weekly_color,
             "rsWeeklyVelocity": info.get("rs_weekly_velocity", 0.0),
+            "rrgQuadrant": rrg_quad,
             "rsRating": rs_rating,
             "mrsIndex": mrs_index,
             "aboveEma8": above_e8,
@@ -123,15 +142,60 @@ def export_reports(state: GraphState) -> dict:
             "stage2Trend": info.get("stage2_trend"),
             "rsNewHigh250": info.get("rs_new_high_250"),
             "rsi14": info.get("rsi14"),
-            "return5D": pct_w,
-            "return10D": pct_w,
-            "return1M": pct_m,
-            "return3M": pct_m
+            "volRatio": vol_ratio,
+            "hasVDU": has_vdu,
+            "pctAboveLastBase": pct_above_base,
+            "rrgHistory": info.get("rrg_history", [])
         })
 
+    # Identify Current Focus Leaders (Price > Supertrend & ST Bullish & RS Velocity > 0)
+    current_focus_leaders = [
+        item["symbol"] for item in sorted(
+            [item for item in theme_tracker_items if (
+                item.get("price", 0) > (item.get("supertrend") or 0) and 
+                item.get("supertrendDirection") == 1 and 
+                (item.get("rsWeeklyVelocity") or 0) > 0
+            )],
+            key=lambda x: x.get("rsWeeklyPct") if isinstance(x.get("rsWeeklyPct"), (int, float)) else -999,
+            reverse=True
+        )[:10]
+    ]
+
+    # Calculate Focus Leaders Diffs from previous scan
+    last_leaders_file = os.path.join(output_dir, "last_focus_leaders.json")
+    last_focus_leaders = []
+    if os.path.exists(last_leaders_file):
+        try:
+            with open(last_leaders_file, "r") as f:
+                last_focus_leaders = json.load(f)
+        except Exception:
+            last_focus_leaders = []
+
+    newly_entered = [sym for sym in current_focus_leaders if sym not in last_focus_leaders]
+    newly_exited_symbols = [sym for sym in last_focus_leaders if sym not in current_focus_leaders]
+    
+    newly_exited = []
+    for sym in newly_exited_symbols:
+        t_info = technical_indicators.get(sym, {})
+        st_dir = t_info.get("supertrend_direction", 0)
+        vel = t_info.get("rs_weekly_velocity", 0.0)
+        reason = "ST Flipped" if st_dir != 1 else "RS Decel" if vel <= 0 else "Dropped Rank"
+        newly_exited.append({"symbol": sym, "reason": reason})
+
+    # Save current focus leaders for next diff
+    with open(last_leaders_file, "w") as f:
+        json.dump(current_focus_leaders, f, indent=2)
 
     # Calculate Market Regime Dashboard Metrics
     market_regime_data = calculate_market_regime(technical_indicators, etf_universe)
+    market_regime_data["leader_changes"] = {
+        "newly_entered": newly_entered,
+        "newly_exited": newly_exited,
+        "previous_leaders": last_focus_leaders,
+        "current_leaders": current_focus_leaders
+    }
+    market_regime_data["scan_date"] = state.get("scan_date")
+
 
     # Save latest_scan.csv
     df_out = pd.DataFrame(scan_rows)

@@ -104,9 +104,22 @@ python3 -c "import sqlite3; conn = sqlite3.connect('data/db/etfs.db'); print(con
 
 ---
 
-### 5. Launching the Web Dashboard Only
+### 5. Launching the Dashboard (Web or Native Desktop)
 
-If data reports are already generated under `data/outputs/` and you only want to start the React web UI:
+#### Option A: Native Desktop App (Recommended)
+Launches the native desktop window and automatically manages the local Python FastAPI sidecar in the background:
+
+```bash
+cd dashboard
+npm run desktop:dev
+```
+- **Features**: Native frameless window with macOS drag region, auto-managed Python sidecar process, zero browser tabs required.
+- **In-App "Run Daily Scan"**: Click the button on the **Market** overview page to trigger live Yahoo Finance sync, Supertrend calculations, and instant UI refresh (~5–8s).
+- **In-App "⚡ Run Strategy Optimizer"**: Click the dedicated optimizer button on the **Backtests / Strategy Lab** page to run the multi-process genetic grid search across 71,000 parameter combinations.
+- **Port**: Desktop shell connects to the internal FastAPI sidecar at `http://127.0.0.1:8765`.
+
+#### Option B: Web Browser Mode
+If you prefer running in a standard web browser:
 
 ```bash
 cd dashboard
@@ -117,7 +130,67 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
 ---
 
+### 6. Custom Data Storage & Persistence Paths
+
+StockWave supports flexible data directories for storing SQLite databases, input lists, and output JSONs:
+
+1. **Default Storage Locations**:
+   - **Dev Mode**: Local project folder (`./data/`).
+   - **Packaged App (macOS)**: `~/Library/Application Support/StockWave/data/`.
+   - **Packaged App (Windows)**: `%APPDATA%\StockWave\data\`.
+2. **Configuring a Custom Storage Directory**:
+   - Open the desktop app $\rightarrow$ navigate to the **Settings** tab $\rightarrow$ **Local Data & Storage Paths**.
+   - Click **`📁 Change Data Directory`** and select any local folder, external drive, or cloud sync folder (e.g. iCloud, Dropbox).
+   - The app persists your chosen path in `user_config.json` and automatically routes all scans, database writes, and exports there.
+3. **Environment Variable Override**:
+   - You can also specify a custom path via terminal:
+     ```bash
+     STOCKWAVE_DATA_DIR=/path/to/custom/data npm run desktop:dev
+     ```
+
+---
+
+### 7. Building Standalone Installers (.dmg for Mac / .exe for Windows)
+
+To distribute StockWave as a self-contained installer that requires **no Python, Node, Git, or terminal tools** for the recipient:
+
+#### Build Locally on macOS (.dmg):
+```bash
+# 1. Compile the Python sidecar binary
+uv run python scripts/build_sidecar.py
+
+# 2. Package into a drag-and-drop .dmg
+cd dashboard
+npm run desktop:build
+```
+- **Installer Output**: `dashboard/dist-electron/StockWave-0.0.0-arm64.dmg`.
+- **First Run**: Automatically seeds the bundled SQLite database (`etfs.db`) and pre-calculated indicators to the user's system for instant out-of-the-box operation.
+
+#### Build Locally on Windows (.exe):
+```cmd
+:: 1. Compile the Python sidecar binary
+uv run python scripts/build_sidecar.py
+
+:: 2. Package into a Windows NSIS installer
+cd dashboard
+npm run desktop:build
+```
+- **Installer Output**: `dashboard/dist-electron/StockWave Setup 0.0.0.exe`.
+
+#### Automated Cloud Multi-OS Builds (GitHub Actions):
+- Trigger the workflow from the **Actions** tab in GitHub or push a release tag (`git tag v1.0.0 && git push --tags`).
+- GitHub Actions builds both **`StockWave.dmg`** and **`StockWave Setup.exe`** simultaneously and attaches them as downloadable release artifacts.
+
+---
+
 ## Troubleshooting & FAQ
 
-- **Fast Report Generation**: `export_reports` runs immediately after quantitative calculations, so data is updated in under 2 seconds without waiting for Ollama LLM inference.
-- **Port Conflicts**: If port `5173` is in use, Vite will automatically prompt or use the next available port.
+- **Desktop App Window Dragging**: Click and drag along the top 28px titlebar region of the desktop window to reposition it on your screen.
+- **Fast Report Generation**: In-app daily scans run purely in-memory in ~5–8 seconds, skipping all CPU-heavy optimizer forks.
+- **Clean App Shutdown**: Closing the desktop app automatically terminates Vite, Electron, and the Python FastAPI sidecar process cleanly.
+- **Port Conflicts**: 
+  - If `Port 5173 is already in use` appears when starting `npm run desktop:dev`, ensure any previous dev server instance is terminated.
+  - The Python FastAPI sidecar runs automatically on port `8765`. If it's already active from another instance, the desktop app will cleanly connect to the existing sidecar without crashing.
+
+
+
