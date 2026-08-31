@@ -38,12 +38,27 @@ def calculate_rs_phase_performance(
 
     # Resample to weekly timeframe if requested
     if timeframe == 'weekly':
-        df_work = df.resample('W-FRI').agg({
-            'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
-        }).dropna()
-        bm_work = benchmark_df.resample('W-FRI').agg({
-            'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
-        }).dropna()
+        if "Date" in df.columns and pd.api.types.is_datetime64_any_dtype(df["Date"]):
+            df_work = df.resample('W-FRI', on='Date').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+        elif isinstance(df.index, pd.DatetimeIndex):
+            df_work = df.resample('W-FRI').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+        else:
+            df_work = df.copy()
+
+        if "Date" in benchmark_df.columns and pd.api.types.is_datetime64_any_dtype(benchmark_df["Date"]):
+            bm_work = benchmark_df.resample('W-FRI', on='Date').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+        elif isinstance(benchmark_df.index, pd.DatetimeIndex):
+            bm_work = benchmark_df.resample('W-FRI').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+        else:
+            bm_work = benchmark_df.copy()
     else:
         df_work = df.copy()
         bm_work = benchmark_df.copy()

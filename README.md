@@ -67,12 +67,14 @@ All technical indicators are modular Python functions under `src/indicators/`:
      $$\text{MRS Index} = \left( \frac{\text{Close}_{\text{ETF}} / \text{Close}_{\text{SPY}}}{\text{SMA}_{52}(\text{Close}_{\text{ETF}} / \text{Close}_{\text{SPY}})} - 1 \right) \times 10$$
    - Supports 52-period daily (`mrs_daily_index`) and weekly (`mrs_weekly_index`) relative strength.
 2. **Moving Averages (`src/indicators/moving_averages.py`)**:
-   - `EMA 8`, `EMA 21`, `SMA 50`, `SMA 200`.
-3. **RSI 14 (`src/indicators/rsi.py`)**:
+   - `EMA 8`, `EMA 13`, `EMA 21`, `SMA 50`, `EMA 65`, `SMA 200`.
+3. **Volatility & Momentum (`src/indicators/volatility_volume.py`)**:
+   - `ATR 14`, `ATR 14 %` (ATR as % of Close), `20-day Volume MA`, `Volume MA Ratio`, `20-day Return %` (rate-of-change momentum).
+4. **RSI 14 (`src/indicators/rsi.py`)**:
    - Daily rolling RSI series (`calculate_rsi_series`).
-4. **52-Week Offsets (`src/indicators/columns/`)**:
+5. **52-Week Offsets (`src/indicators/columns/`)**:
    - `pct_off_52wk_high.py` and `pct_off_52wk_low.py`.
-5. **MarketSmith 1-99 RS Percentile Rating (`src/indicators/mansfield_rs.py`)**:
+6. **MarketSmith 1-99 RS Percentile Rating (`src/indicators/mansfield_rs.py`)**:
    - Weighted 4-quarter performance vs SPY benchmark.
 
 ---
@@ -82,43 +84,58 @@ All technical indicators are modular Python functions under `src/indicators/`:
 ```mermaid
 graph TD
     StartNode(["🚀 START / TRIGGER"]) --> IngestNode["1. Ingest ETFs Node<br>(data/inputs/etf.yaml + yfinance + SQLite)"]
-    IngestNode --> TechNode["2. Technical & Indicator Engine Node<br>(src/indicators/* + Historical Daily Market Regime)"]
+    IngestNode --> TechNode["2. Technical & Indicator Engine Node<br>(src/indicators/* + 19 Indicators + Daily Regime)"]
     TechNode --> PatternNode["3. Pattern Detector Node<br>(VCP, VDU, Stage 2 Trend, Pivots)"]
     PatternNode --> EvolutionaryOptimizerNode["4. Profit-Maximizing Evolutionary Strategy Engine<br>(qwen3-coder:30b + llm_rules.json + Live Regime Stats)"]
     EvolutionaryOptimizerNode --> BacktestNode["5. Strategy Backtester + Portfolio Simulator Node<br>(SQLite State Machine + Equity Curve, Drawdown, Capital Limits)"]
     BacktestNode --> ExportNode["6. Export Reports Node<br>(CSV, Ticker Technical JSONs, Strategy Lab JSON + portfolio_summary)"]
-    ExportNode --> DashboardNode["7. Vite React Dashboard UI<br>(http://localhost:5173 - Market, Technical, Strategy Lab)"]
+    ExportNode --> DashboardNode["7. Vite React Dashboard UI<br>(http://localhost:5173 - Market, Technical)"]
 ```
 
 ---
 
-## 5. LLM Rules & Context (`data/inputs/llm_rules.json`)
+## 5. Declarative Genetic Engine Rules (`data/inputs/backtest_rules.yaml`)
 
-**Single source of truth** for all context and constraints sent to the local LLM. Edit this file to tune optimizer behavior — no Python changes required.
+**Master single source of truth** for all genetic indicator bounds, allowed crossover pairs, universe-specific risk overrides, and combinatorial search space parameters.
 
-| Section | Type | Purpose |
-| :--- | :--- | :--- |
-| `entry_guidance.preferred_baseline` | Static | Preferred entry filter conditions injected into every LLM prompt |
-| `entry_guidance.avoid_conditions` | Static | Conditions the LLM should not use (e.g., `PRESS_GAS` alone which rarely fires) |
-| `exit_rules.always_require` | Static | **Hard SQL exit** always injected into every strategy before backtesting — non-negotiable |
-| `universe_hints` | Static | Per-universe strategic context loaded dynamically — ETF tickers injected at runtime from SQLite |
-| `zero_trade_recovery.message` | Static | Recovery message appended to prompt when all hypotheses produce 0 trades |
-| `regime_context` | **Dynamic** | Computed live from all available SQLite data — never hardcoded |
+| Section | Purpose |
+| :--- | :--- |
+| `indicators.trend_series` | Allowed moving average crossover series (`ema_8`, `ema_13`, `ema_21`, `sma_50`, `ema_65`, `sma_200`, `close`) |
+| `indicators.numeric_metrics` | Range & step bounds for bounded numeric indicators (`rsi_14`, `atr14_pct`, `vol_ratio`, `vol_ma20_ratio`, `mrs_daily_index`, `mrs_weekly_index`, `return_20d_pct`, `pct_off_52wk_high`) |
+| `risk_management` | Range & step bounds for Stop Loss (`min: 0.02`, `max: 0.10`, `step: 0.005`) and Multi-Step Profit Target Trims |
+| `mandatory_rules` | Non-negotiable safety rails (`close < ema_21 OR mrs_daily_index < 0.0`) injected into every strategy |
+| `universe_profiles` | Universe-specific strategic overrides (e.g. higher profit targets for `Leveraged_Long`, bearish RS rules for `Leveraged_Short`) |
+| `search_space` | Strict operator rules (`entry_logic_operator: "AND"`, `exit_logic_operator: "OR"`) & combinatorial search controls |
+
+- **Auto-Persistence**: Saves promoted champions directly into `data/inputs/strategies.json` and logs full strategy genomes, experiments, and trade logs into SQLite (`research_strategies`, `research_experiments`, `research_experiment_trades`).
 
 ---
 
-## 6. Profit-Maximizing Evolutionary Strategy Engine (`src/graphs/nodes/optimize_strategies.py`)
+## 6. StockWave Evolutionary Research Engine (`src/research/`)
 
-The strategy optimizer operates as an autonomous parameter-tuning and profit-maximization loop:
+The strategy optimizer operates as an autonomous **100% LLM-free Declarative Combinatorial Genetic Research Engine**:
 
-- **Local LLM Model**: `qwen3-coder:30b` via Ollama (`http://127.0.0.1:11434/api/chat`).
-- **LLM Context Source**: All prompt context sourced exclusively from `data/inputs/llm_rules.json` (static) + live SQLite regime distribution (dynamic — computed over ALL available historical data, not a fixed lookback window).
-- **7 Target Universes**: `Leveraged_Long`, `Leveraged_Short`, `Leadership`, `Breadth`, `Defense`, `Canaries`, `All ETFs`.
-- **Parameter Grid Sweeps**: 12+ parameter combinations per hypothesis (Stop Loss: 3%, 5%, 7%, 8%; Multi-step Profit Trims: 15%/30%, 20%/35%/50%, 25%/50%).
-- **Hard Exit Injection**: The mandatory exit rule from `llm_rules.json` (`exit_rules.always_require`) is always AND-injected into every strategy before backtesting — the LLM cannot omit it.
-- **0-Trade Recovery**: If all hypotheses for a universe produce 0 trades, the `zero_trade_recovery.message` from `llm_rules.json` is appended to the retry prompt.
-- **Objective Function**: Promotes the single **Max Net Dollar Profit ($)** Champion per universe (Trades $\ge 5$, Win Rate $\ge 50\%$, Profit Factor $\ge 1.3$).
-- **Auto-Persistence**: Saves promoted champions directly into `data/inputs/strategies.json`.
+- **Exhaustive Combinatorial Search**: Evaluates thousands of valid candidate strategy combinations across all active indicator rules and dynamic parameter ranges defined in `backtest_rules.yaml`.
+- **Strict Logic Confluence**:
+  - **Entry Rules**: Compiled strictly with **`AND`** operators (`(ema_8 > ema_21 AND mrs_daily_index > 0.0 AND rsi_14 >= 50.0)`).
+  - **Exit Rules**: Compiled strictly with **`OR`** operators (`close < ema_21 OR mrs_daily_index < 0.0`).
+- **YAML Config Loader (`YAMLBacktestRulesLoader`)**: Dynamically parses ranges and steps from `backtest_rules.yaml` to generate threshold arrays at runtime without hardcoded logic.
+- **Top-K Champion Strategy Pruning**: Keeps `strategies.json` lightweight (max 1 top champion per universe) while archiving 100% of historical iterations in SQLite `research_strategies`.
+- **Durable Research Database**: Immutable SQLite tables track every historical experiment run, completed trade, and strategy lineage without overwriting history.
+- **Regime-Grouped Evidence Aggregator (`EvidenceAggregator`)**: Calculates statistical performance (win rate %, average profit factor, return) for every indicator globally and grouped by market regime (`PRESS_GAS` vs `HALF_SIZE` vs `STEP_ASIDE`).
+
+### Multi-Iteration Research Runner Script (`scripts/run_research_iterations.py`)
+
+To execute sequential evolutionary research iterations and aggregate empirical evidence in SQLite:
+
+```bash
+# Run 10 sequential research iterations
+uv run python scripts/run_research_iterations.py --runs 10
+
+# Run 50 sequential research iterations
+uv run python scripts/run_research_iterations.py --runs 50
+```
+
 
 ---
 
@@ -156,24 +173,60 @@ Results are output to `data/outputs/strategy_lab.json` under the `portfolio_summ
 Strategies are defined in JSON format and executed natively in SQLite:
 
 - **Preset File**: `data/inputs/strategies.json`
-- **Supported Indicators**: `ema_8`, `ema_21`, `sma_50`, `sma_200`, `rsi_14`, `mrs_daily_index`, `mrs_weekly_index`, `close`, `r.regime_code`.
+- **Supported Indicators**: `ema_8`, `ema_13`, `ema_21`, `sma_50`, `ema_65`, `sma_200`, `rsi_14`, `atr_14`, `atr14_pct`, `vol_ma20`, `vol_ratio`, `vol_ma20_ratio`, `mrs_daily_index`, `mrs_weekly_index`, `return_20d_pct`, `pct_off_52wk_high`, `pct_off_52wk_low`, `close`, `r.regime_code`.
 - **Zero Default Fallback**: Risk management stop loss is strictly opt-in (`"stop_loss_pct": 0.05`).
 - **On-Demand Backtesting**: Executes ~1-second vector state machine per ticker with execution logs sorted by entry date descending.
 
+
 ---
 
-## 9. Summary of Database & Files
+---
+
+## 10. Native Desktop Application & Packaging (`StockWave`)
+
+`stock-analyzer.ai` provides a native desktop application (**StockWave**) powered by **Electron + React + FastAPI Python Sidecar**:
+
+- **Sleek Top Navigation**: Frameless window design with centered navigation pill tabs (**📈 Market Overview**, **⚡ Technical Charts**, **🧬 Strategy Lab**, **⚙️ Settings**) and macOS window drag region.
+- **In-App Live Execution**:
+  - **Market Overview**: "Run Daily Scan" button performs live Yahoo Finance sync and indicator calculations in ~5–8s.
+  - **Strategy Lab**: "⚡ Run Strategy Optimizer" button triggers the multi-process genetic grid search across 71,000 parameter permutations with live SSE streaming progress.
+- **Custom Data Storage Paths**: Users can change their active data directory via **Settings $\rightarrow$ Local Data & Storage** (`📁 Change Data Directory`). The app automatically migrates the database and output files to the chosen directory or cloud folder.
+- **Standalone Distribution (.dmg for macOS / .exe for Windows)**:
+  - Requires **no Python, Node, Git, or terminal tools** for the recipient.
+  - Automatically seeds the bundled SQLite database (`etfs.db`), inputs, and indicators on first launch.
+
+### Building Standalone Installers
+
+```bash
+# 1. Compile the Python sidecar binary
+uv run python scripts/build_sidecar.py
+
+# 2. Package into a macOS drag-and-drop .dmg
+cd dashboard
+npm run desktop:build
+```
+- macOS Output: `dashboard/dist-electron/StockWave-0.0.0-arm64.dmg`
+- Windows Output: `dashboard/dist-electron/StockWave Setup 0.0.0.exe` (or automated via `.github/workflows/build-installers.yml`)
+
+---
+
+## 11. Summary of Database & Files
 
 - **Strategy Inputs**: `data/inputs/strategies.json` (defines preset entry/exit strategies).
+- **Genetic Rules**: `data/inputs/backtest_rules.yaml` (master combinatorial indicator search bounds and operators).
 - **LLM Rules**: `data/inputs/llm_rules.json` (single source of truth for all LLM context — no ETF tickers hardcoded).
 - **Portfolio Config**: `configs/config.yaml` → `portfolio_simulation` block (starting capital, position sizing, max concurrent positions).
-- **SQLite DB**: `data/db/etfs.db` (contains `ohlcv`, `etf_metadata` with `etf_group`, `etf_daily_indicators`, and `daily_market_regime` tables).
+- **Sidecar Service**: `src/server.py` (FastAPI backend providing REST and SSE endpoints on port `8765`).
+- **SQLite DB**: `data/db/etfs.db` (contains `ohlcv`, `etf_metadata`, `etf_daily_indicators`, `daily_market_regime`, `research_strategies`, `research_experiments`, `research_experiment_trades`, `research_mutation_history`, and `research_llm_observations`).
 - **Log File**: `logs/stock_analyzer.log` (centralized application and strategy optimizer logging).
 - **Outputs**: `data/outputs/`:
   - `etfs_tracker.json` — ETF scan with RS, indicators, and regime data
   - `market_regime.json` — current market regime classification
-  - `strategy_lab.json` — strategy registry, backtest results, and `portfolio_summary` (equity curve, drawdown, account value)
+  - `strategy_lab.json` — strategy registry, backtest results, portfolio_summary, and `indicator_evidence`
   - `tickers/technical/<SYMBOL>.json` — per-ticker OHLCV + indicator history
   - `latest_scan.csv` — tabular scan export
-- **Dashboard App**: `dashboard/` (Vite React app rendering Market, Technical Analysis, and Strategy Lab).
+- **Desktop Dashboard**: `dashboard/` (Vite React + Electron desktop app).
+
+
+
 

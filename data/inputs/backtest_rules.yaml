@@ -1,0 +1,202 @@
+# ==============================================================================
+# StockWave Master Strategy Engine Configuration (Institutional v3.0)
+# Dynamic Declarative Parameter Permutation, Quality Constraints, & Walk-Forward Validation
+# ==============================================================================
+version: "3.0"
+description: "Master declarative specification for StockWave combinatorial grid search optimizer"
+
+# ==============================================================================
+# 1. INDICATORS & SEARCH POOL BOUNDS
+# ==============================================================================
+indicators:
+  trend_series:
+    - ema_8
+    - ema_13
+    - ema_21
+    - sma_50
+    - ema_65
+    - sma_200
+    - close
+
+  numeric_metrics:
+    rsi_14:
+      min: 40.0
+      max: 70.0
+      step: 5.0
+      allowed_operators: [">=", ">"]
+
+    mrs_daily_index:
+      min: -0.20
+      max: 0.20
+      step: 0.05
+      allowed_operators: [">", ">="]
+
+    mrs_weekly_index:
+      min: -0.20
+      max: 0.20
+      step: 0.10
+      allowed_operators: [">", ">="]
+
+    return_20d_pct:
+      min: 0.0
+      max: 15.0
+      step: 2.5
+      allowed_operators: [">", ">="]
+
+    vol_ratio:
+      min: 1.0
+      max: 2.0
+      step: 0.2
+      allowed_operators: [">", ">="]
+
+    vol_ma20_ratio:
+      min: 1.0
+      max: 2.0
+      step: 0.2
+      allowed_operators: [">", ">="]
+
+    atr14_pct:
+      min: 1.0
+      max: 4.0
+      step: 0.5
+      allowed_operators: [">", ">="]
+
+    pct_off_52wk_high:
+      min: -25.0
+      max: 0.0
+      step: 5.0
+      allowed_operators: [">=", ">"]
+
+    # Supertrend direction: strictly binary flag — +1 = Uptrend, -1 = Downtrend
+    # Fixed value: the only meaningful entry filter is supertrend_direction = 1 (uptrend)
+    # No range sweep needed — it is not a continuous metric
+    supertrend_direction:
+      fixed_value: 1
+      allowed_operators: ["="]
+
+# ==============================================================================
+# 2. RISK MANAGEMENT & PROFIT TAKING BOUNDS
+# ==============================================================================
+risk_management:
+  stop_loss_pct:
+    min: 0.02
+    max: 0.08
+    step: 0.005
+
+  profit_targets:
+    target_pct:
+      min: 0.15
+      max: 0.60
+      step: 0.05
+    position_trim_pct: 0.20
+
+# ==============================================================================
+# 3. MANDATORY SAFETY RAILS & INJECTED RULES
+# ==============================================================================
+mandatory_rules:
+  exit_rules:
+    - condition: "close < ema_21 OR mrs_daily_index < 0.0 OR r.regime_code = 'STEP_ASIDE'"
+      reason: "Protect capital during trend breakdown or market regime weakness"
+
+  market_filters:
+    - condition: "r.regime_code IN ('PRESS_GAS', 'HALF_SIZE')"
+      reason: "Restrict entries to healthy or neutral market regimes"
+
+# ==============================================================================
+# 4. UNIVERSE PROFILE OVERRIDES
+# ==============================================================================
+universe_profiles:
+  Leadership:
+    risk_multiplier: 1.0
+    preferred_stop_loss: 0.04
+    profit_target_tier_1: 0.25
+    profit_target_tier_2: 0.50
+
+  Breadth:
+    risk_multiplier: 1.0
+    preferred_stop_loss: 0.03
+    profit_target_tier_1: 0.20
+    profit_target_tier_2: 0.40
+
+  Canaries:
+    risk_multiplier: 0.8
+    preferred_stop_loss: 0.025
+    profit_target_tier_1: 0.15
+    profit_target_tier_2: 0.30
+
+  Defense:
+    risk_multiplier: 0.8
+    preferred_stop_loss: 0.03
+    profit_target_tier_1: 0.15
+    profit_target_tier_2: 0.30
+
+  Leveraged_Long:
+    risk_multiplier: 1.5
+    preferred_stop_loss: 0.06
+    profit_target_tier_1: 0.25
+    profit_target_tier_2: 0.50
+
+  Leveraged_Short:
+    risk_multiplier: 1.5
+    preferred_stop_loss: 0.06
+    profit_target_tier_1: 0.25
+    profit_target_tier_2: 0.50
+
+  All ETFs:
+    risk_multiplier: 1.0
+    preferred_stop_loss: 0.035
+    profit_target_tier_1: 0.20
+    profit_target_tier_2: 0.40
+
+# ==============================================================================
+# 5. SEARCH SPACE & COMPILATION CONTROLS
+# ==============================================================================
+search_space:
+  min_entry_rules: 1
+  max_entry_rules: 4
+  entry_logic_operator: "AND"   # Entry rules MUST use AND (strict confluence)
+  exit_logic_operator: "OR"    # Exit rules MUST use OR (fail-safe protection)
+  combinatorial_mode: true
+  eliminate_duplicate_rules: true
+  eliminate_conflicting_rules: true
+  enforce_mandatory_rules: true
+
+# ==============================================================================
+# 6. QUALITY CONSTRAINTS & INSTITUTIONAL FITNESS SCORING
+# ==============================================================================
+constraints:
+  min_trades: 20
+  min_win_rate_pct: 50.0
+  min_profit_factor: 1.30
+  max_drawdown_pct: 20.0
+  require_positive_expectancy: true
+  require_positive_total_return: true
+
+scoring:
+  primary: fitness_score
+  weights:
+    profit_factor: 0.35
+    expectancy: 0.25
+    total_return_pct: 0.20
+    win_rate: 0.10
+    max_drawdown_pct: -0.10
+  penalties:
+    low_trade_count: true
+    excessive_drawdown: true
+
+# ==============================================================================
+# 7. WALK-FORWARD VALIDATION SPLITS
+# ==============================================================================
+validation:
+  enabled: true
+  train:
+    start: "2021-08-01"
+    end: "2024-03-31"
+  validation:
+    start: "2024-04-01"
+    end: "2025-06-30"
+  test:
+    start: "2025-07-01"
+    end: "latest"
+  promotion:
+    require_all_sets_profitable: true

@@ -1,860 +1,524 @@
-# StockWave Evolutionary Research Engine
+# AI Coding Handoff Plan
+
+## Goal
+Transform the current `stock-analyzer.ai` implementation into an evidence-driven evolutionary research engine that can generate, test, mutate, evaluate, and learn from ETF strategy experiments over time.
+
+This document is written to be passed directly to an AI coding assistant. It is intended to be implementation-oriented, not visionary.
+
+## Project context
+The current system already has these working foundations:
+
+- ETF-only technical analysis pipeline.
+- SQLite-backed indicator and market regime data.
+- Deterministic indicator calculations including Mansfield Relative Strength parity.
+- Strategy backtesting and portfolio simulation.
+- A local LLM-assisted optimizer that proposes candidate strategies.
+- A React/Vite dashboard and JSON/CSV export pipeline.
+
+The target architecture should preserve the current working data pipeline where possible, but change the strategy research layer from "LLM generates strategies and grid searches parameters" into "systematically generate, mutate, backtest, record evidence, and use evidence to guide future search."
+
+## Primary architecture change
+The current implementation is strategy-promotion oriented.
+
+The target implementation must be experiment-history oriented.
+
+That means:
+
+- Never overwrite research history.
+- Treat every strategy run as an experiment.
+- Store rules as structured objects rather than SQL-like freeform strings.
+- Record lineage for every generated strategy.
+- Aggregate evidence across all experiments.
+- Use the LLM only for interpreting evidence and suggesting search directions, not for writing executable strategy logic.
+
+## Non-goals
+Do not do these in the first implementation phase:
+
+- Do not rebuild the indicator engine.
+- Do not rebuild the dashboard frontend beyond minimal additions needed to expose new outputs.
+- Do not remove the current strategy lab until the new research pipeline is functioning.
+- Do not make the LLM responsible for SQL generation.
+- Do not introduce a distributed system or remote orchestration.
+
+## Desired end state
+The system should support this loop:
+
+1. Read current indicator and ETF universe data from SQLite.
+2. Generate candidate strategies from structured rule components.
+3. Mutate or crossover existing high-value strategies.
+4. Backtest each strategy through the existing execution engine or an adapted equivalent.
+5. Save all trades, metrics, parameters, and metadata as immutable experiments.
+6. Aggregate evidence across experiments.
+7. Compute feature, rule, and pair importance statistics.
+8. Ask the LLM for research observations based on evidence summaries only.
+9. Feed those observations into a search controller that biases the next generation.
+10. Repeat.
+
+## Implementation principles
+
+- Indicators are facts.
+- Rules are hypotheses.
+- Strategies are experiments.
+- Backtests create evidence.
+- Evidence guides future search.
+- The backtester must not contain optimizer logic.
+- The optimizer must not contain execution logic.
+- The LLM must not generate executable syntax.
+
+## Existing components to preserve
+Retain and reuse these current capabilities as much as possible:
+
+- SQLite database with ETF metadata, OHLCV history, daily indicators, and market regime data.
+- Indicator computation modules under `src/indicators/`.
+- Current backtest execution concepts and portfolio simulation logic.
+- Existing export conventions where practical.
+- Existing regime context and ETF universe model.
+
+Refactor around them rather than replacing them wholesale.
+
+## New core entities
+Introduce these durable domain entities.
+
+### Rule
+Represents one structured condition.
+
+Suggested fields:
+
+- `id`
+- `category` (`trend`, `relative_strength`, `momentum`, `market_filter`, `exit`, `risk`, `profit_taking`)
+- `left_operand`
+- `operator`
+- `right_operand`
+- `enabled`
+- `weight`
+- `parameter_metadata` (optional JSON)
+
+Examples:
+
+- `ema_8 > ema_21`
+- `mrs_weekly_index > 0`
+- `rsi_14 > 55`
+- `close > sma_50`
+
+### Strategy
+Represents a structured strategy definition, not a SQL string.
+
+Suggested fields:
+
+- `id`
+- `name`
+- `universe`
+- `entry_rule_ids`
+- `exit_rule_ids`
+- `risk_rule_ids`
+- `profit_taking_rule_ids`
+- `market_filter_rule_ids`
+- `status`
+- `created_at`
+- `created_from_strategy_id` (nullable)
+- `generation_number`
+- `origin_type` (`seed`, `mutation`, `crossover`, `manual`)
+
+### Experiment
+Represents one execution of one strategy on one configuration.
+
+Suggested fields:
+
+- `id`
+- `strategy_id`
+- `run_timestamp`
+- `universe`
+- `date_range`
+- `parameter_snapshot`
+- `metrics_json`
+- `portfolio_summary_json`
+- `trade_count`
+- `duration_seconds`
+- `success`
+- `failure_reason` (nullable)
+
+### Trade
+Represents one completed trade from an experiment.
+
+Suggested fields:
+
+- `id`
+- `experiment_id`
+- `strategy_id`
+- `symbol`
+- `entry_date`
+- `exit_date`
+- `entry_price`
+- `exit_price`
+- `return_pct`
+- `exit_reason`
+- `holding_period`
+
+### Mutation history
+Tracks how a strategy changed.
+
+Suggested fields:
+
+- `id`
+- `parent_strategy_id`
+- `child_strategy_id`
+- `mutation_type`
+- `mutation_details_json`
+- `created_at`
+
+### Evidence tables
+Add evidence-oriented aggregate tables.
+
+Minimum set:
+
+- `feature_statistics`
+- `indicator_statistics`
+- `rule_statistics`
+- `rule_pair_statistics`
+- `llm_observations`
+
+## Database changes
+Keep the existing ETF and indicator tables intact.
+
+Add new normalized research tables rather than forcing all new behavior into the current `strategies.json` and `strategy_lab.json` flow.
 
-Version 2
+Preferred direction:
 
----
+- Continue using SQLite.
+- Add migrations for new tables.
+- Make experiment and trade persistence append-only.
+- Allow aggregate tables to be recomputed when needed.
+
+Avoid storing new strategy logic as raw SQL blobs where possible.
+
+## Strategy representation
+The assistant should replace string-based strategy definitions with structured, serializable rule objects.
+
+A strategy should be composed from named rule groups:
+
+- Universe
+- Entry rules
+- Exit rules
+- Risk rules
+- Profit-taking rules
+- Market filters
 
-# Vision
+The system must still be able to compile a structured strategy into executable backtest conditions internally, but compiled execution logic should be derived from structured rules rather than being the source of truth.
+
+## Generator requirements
+Implement a strategy generator that does not depend on the LLM.
+
+The generator should:
+
+- Choose a universe.
+- Choose one or more trend rules.
+- Choose one or more relative strength rules.
+- Choose optional momentum rules.
+- Choose market filters.
+- Choose exit logic.
+- Choose stop-loss and profit-taking settings.
+- Produce many valid structured candidate strategies.
+
+Generation should be deterministic when seeded.
+
+## Mutation requirements
+Implement mutations at the rule and strategy level.
+
+Required mutation types:
 
-StockWave should not be a strategy generator.
+- Threshold adjustment, example: `rsi_14 > 50` to `rsi_14 > 55`
+- Operator change, example: `>` to `>=`
+- Indicator substitution, example: daily RS to weekly RS
+- Rule addition
+- Rule removal
+- Universe change
+- Exit change
+- Risk parameter change
 
-It should become an AI Research Platform that continuously discovers
-better ETF trading strategies through evidence.
+Every mutation must be recorded in lineage tables.
 
-The system should improve over time as more experiments are run.
+## Crossover requirements
+Implement gene-like crossover between compatible strategies.
 
-The LLM is NOT the optimizer.
+A child strategy may inherit independent components such as:
 
-The optimizer is NOT the backtester.
+- Trend rules from parent A
+- Relative strength rules from parent B
+- Exit logic from parent B
+- Risk settings from parent A
 
-Every component has a single responsibility.
+The child must be validated before backtesting.
 
----
+## Backtesting requirements
+Reuse the existing backtest engine if possible, but enforce clean boundaries.
 
-# Guiding Principles
+The backtester must:
 
-1. Indicators are facts.
-2. Rules are hypotheses.
-3. Strategies are experiments.
-4. Backtests generate evidence.
-5. Evidence improves future hypotheses.
+- Accept a structured strategy definition.
+- Resolve it into executable conditions.
+- Run the per-ETF state machine.
+- Emit trade logs.
+- Emit summary metrics.
+- Emit portfolio-level metrics if portfolio simulation is enabled.
+
+The backtester must not:
+
+- Choose what to test next.
+- Rank search directions.
+- Perform mutation logic.
+- Call the LLM.
+
+## Experiment persistence
+Every backtest run must create a persistent experiment record.
+
+Rules:
+
+- Never overwrite an old experiment.
+- Never delete past evidence during normal operation.
+- Persist failed runs when possible with failure metadata.
+- Store enough metadata to reproduce the run later.
+
+## Evidence aggregation
+Implement a post-processing layer that computes statistics across all completed experiments.
+
+Minimum outputs:
+
+- Rule frequency.
+- Rule win rate.
+- Rule profit factor.
+- Indicator usage frequency.
+- Average return by indicator.
+- Average drawdown by rule.
+- Pairwise rule statistics.
+- Universe-level performance summaries.
+- Exit-type performance summaries.
 
-The goal is continuous learning.
+These aggregates should be queryable by later optimizer stages and by the dashboard.
 
----
+## LLM role
+The LLM should only receive evidence summaries, not raw execution responsibilities.
 
-# System Architecture
+The LLM input may include:
 
-                     SQLite
-                        │
-                        ▼
-              Indicator Database
-                        │
-                        ▼
-              Strategy Generator
-                        │
-                        ▼
-             Candidate Strategies
-                        │
-                        ▼
-               Backtesting Engine
-                        │
-                        ▼
-             Experiment Database
-                        │
-                        ▼
-              Evidence Aggregator
-                        │
-                        ▼
-                     LLM
-                        │
-                        ▼
-             New Research Direction
-                        │
-                        ▼
-             Strategy Generator
+- Top experiments.
+- Weak experiments.
+- Rule statistics.
+- Pair statistics.
+- Feature importance.
+- Indicator importance.
+- Recent changes in search performance.
 
-Repeat forever.
+The LLM output should be limited to structured research observations such as:
 
----
+- promising indicators
+- weak indicators
+- threshold regions worth exploring
+- combinations worth expanding
+- combinations worth reducing
+- universes worth prioritizing
 
-# Database Layers
+The LLM must not return executable SQL or direct strategy syntax that becomes the source of truth.
 
-Current
+## Search controller
+Implement a search controller that consumes aggregate evidence and optional LLM observations.
 
-etf_metadata
+Its job is to bias the next generation by changing probabilities such as:
 
-etf_indicators
+- likelihood of selecting certain indicators
+- likelihood of selecting certain rule pairs
+- mutation rate by strategy family
+- threshold exploration ranges
+- universe priority
 
-These remain unchanged.
+This controller should be rule-based first. LLM suggestions can influence it, but should not fully control it.
 
----
+## Explainability and lineage
+Every strategy should be explainable.
 
-New Tables
+For each strategy, the system should be able to answer:
 
-strategy
+- Why it was generated.
+- Whether it came from seed, mutation, or crossover.
+- Which parent strategy it came from.
+- Which changes were applied.
+- Which rules contributed most to its performance.
+- Which rules appear harmful according to aggregate evidence.
 
-Stores every strategy definition.
+## Suggested file and module changes
+This is a proposed direction. Adjust to the actual repository layout if needed.
 
-experiment
+### New modules
 
-One execution of one strategy.
+- `src/research/models/rules.py`
+- `src/research/models/strategy.py`
+- `src/research/models/experiment.py`
+- `src/research/generator/strategy_generator.py`
+- `src/research/evolution/mutation_engine.py`
+- `src/research/evolution/crossover_engine.py`
+- `src/research/backtest/strategy_compiler.py`
+- `src/research/evidence/aggregator.py`
+- `src/research/evidence/importance.py`
+- `src/research/search/search_controller.py`
+- `src/research/llm/research_observer.py`
+- `src/research/persistence/repositories.py`
+- `src/research/persistence/migrations.py`
 
-trade
+### Existing modules likely to be adapted
 
-Every completed trade.
+- Current optimizer node implementation.
+- Current backtest engine.
+- Current strategy definition loading path.
+- Current export pipeline.
+- Current dashboard data endpoints or JSON output generation.
 
-rule
+## Delivery phases
+Implement in phases. Do not attempt a full rewrite in one pass.
 
-Normalized rule storage.
+### Phase 1: Structured strategy model
 
-feature_statistics
+Deliverables:
 
-Aggregated statistics across every experiment.
+- Rule and Strategy domain models.
+- Serialization and deserialization.
+- Compiler from structured strategies to executable conditions.
+- Compatibility layer so existing backtester can run structured strategies.
 
-indicator_statistics
+Acceptance criteria:
 
-How every indicator performed historically.
+- At least one current strategy can be represented as structured rules.
+- Structured strategy compiles and backtests successfully.
+- Existing indicator references still work.
 
-mutation_history
+### Phase 2: Experiment persistence
 
-Tracks evolution.
+Deliverables:
 
-llm_observations
+- SQLite migrations for strategy, experiment, trade, and mutation tables.
+- Persistence layer for experiment runs.
+- Append-only experiment logging.
 
-Stores AI reasoning over time.
+Acceptance criteria:
 
----
+- Every run creates experiment and trade records.
+- Failed runs are recorded safely.
+- Prior runs remain queryable.
 
-# Strategy Model
+### Phase 3: Generator and mutation engine
 
-Current
+Deliverables:
 
-"conditions":
+- Non-LLM strategy generator.
+- Mutation engine.
+- Crossover engine.
+- Validation rules for generated strategies.
 
-EMA8 > EMA21
-AND
-RSI > 50
-AND
-Weekly RS > 0
+Acceptance criteria:
 
-Instead
+- System can generate multiple valid strategies automatically.
+- Mutations and crossovers are logged with lineage.
+- Invalid strategies are rejected before backtest.
 
-Strategy
+### Phase 4: Evidence aggregation
 
-Universe
+Deliverables:
 
-Entry Rules
+- Aggregate rule and indicator statistics.
+- Pair statistics.
+- Feature importance computations.
+- Exportable evidence summaries.
 
-Exit Rules
+Acceptance criteria:
 
-Risk
+- Aggregates can be recomputed from persisted experiments.
+- Evidence tables support ranking by profitability, robustness, and frequency.
 
-Profit Taking
+### Phase 5: LLM research observer and search controller
 
-Every rule becomes its own object.
+Deliverables:
 
-Example
+- Evidence summarizer for the LLM.
+- Structured observation output format.
+- Search controller that biases next-generation search.
 
-Entry
+Acceptance criteria:
 
-Rule
+- LLM output is advisory, not executable.
+- Search behavior changes based on evidence.
+- Search can run without the LLM as a fallback.
 
-Left
+### Phase 6: Dashboard exposure
 
-ema8
+Deliverables:
 
-Operator
+- Evidence and lineage outputs available to the dashboard.
+- Minimal new views or data endpoints for experiment history and importance metrics.
 
->
+Acceptance criteria:
 
-Right
+- User can inspect top rules, top pairs, strategy lineage, and optimizer learning history.
 
-ema21
+## Constraints
 
-Another
+- Keep Python implementation style consistent with the existing repository.
+- Prefer additive changes over destructive rewrites.
+- Preserve current indicator naming unless there is a migration plan.
+- Keep SQLite as the source of truth in the near term.
+- Maintain deterministic behavior where practical for reproducibility.
+- Favor explicit types and schema clarity over loosely structured dicts.
 
-Left
+## Testing requirements
+Add tests for:
 
-mrs_daily
+- Rule serialization.
+- Strategy compilation.
+- Mutation correctness.
+- Crossover validity.
+- Experiment persistence.
+- Evidence aggregation accuracy.
+- Lineage reconstruction.
+- Backward compatibility for at least one existing strategy path.
 
-Operator
+## Output requirements
+The implementation should produce machine-readable outputs for:
 
->
+- strategy definitions
+- experiment results
+- trade logs
+- evidence summaries
+- lineage relationships
+- LLM observations
 
-Right
+JSON is acceptable for exports, but SQLite should remain the canonical persistent store.
 
-0
+## Open questions to resolve explicitly during implementation
+If any of these are not already answered by the repository, stop and document the decision rather than guessing.
 
-Another
+- Should existing `strategies.json` remain supported as an import format only, or as an active runtime format?
+- Should portfolio simulation occur for every experiment or only shortlisted strategies?
+- What metrics define a "promising" strategy beyond profit factor and net profit?
+- How should regime filters be represented as rule objects?
+- What is the minimum viable dashboard surface for evidence inspection?
+- Should aggregates be materialized tables, views, or batch-generated snapshots?
+- How should duplicate strategies be detected canonically?
 
-Left
+## Definition of done
+The first successful milestone is not "the best strategy was found."
 
-rsi14
+The first successful milestone is:
 
-Operator
+- structured strategies exist
+- experiments are persisted immutably
+- mutations and lineage are tracked
+- aggregate evidence is computed
+- the search process can improve based on stored evidence
+- the LLM is limited to research guidance
 
->
+## Instructions to the AI coding assistant
 
-Right
-
-50
-
-No SQL strings.
-
----
-
-# Rule Object
-
-Every rule
-
-id
-
-category
-
-left_operand
-
-operator
-
-right_operand
-
-enabled
-
-weight
-
-Examples
-
-close > ema21
-
-ema8 > ema21
-
-mrs_daily > 0
-
-rsi14 > 55
-
-All rules share one schema.
-
----
-
-# Strategy Genome
-
-A strategy is DNA.
-
-Universe
-
-Trend
-
-Relative Strength
-
-Momentum
-
-Market Filter
-
-Risk
-
-Exit
-
-Profit Taking
-
-Each section is a gene.
-
-Example
-
-Leadership
-
-EMA8>EMA21
-
-WeeklyRS>0
-
-DailyRS>0
-
-RSI>55
-
-PRESS_GAS
-
-EMA21 Exit
-
-3% Stop
-
-20/20/20 Trim
-
-Every gene is independently mutable.
-
----
-
-# Strategy Generator
-
-The generator builds candidate strategies.
-
-It should NOT ask the LLM.
-
-Instead
-
-Choose Universe
-
-Choose Trend Rule
-
-Choose RS Rule
-
-Choose Momentum Rule
-
-Choose Exit
-
-Choose Risk
-
-Assemble Strategy
-
-Thousands of combinations.
-
----
-
-# Mutation Engine
-
-Mutation Types
-
-Threshold
-
-50
-
-↓
-
-55
-
-Operator
-
->
-
-↓
-
->=
-
-Indicator
-
-Daily RS
-
-↓
-
-Weekly RS
-
-Rule Removal
-
-Remove RSI
-
-Rule Addition
-
-Add Close>SMA50
-
-Universe
-
-Leadership
-
-↓
-
-Breadth
-
-Exit
-
-EMA21
-
-↓
-
-Weekly RS
-
-Risk
-
-3%
-
-↓
-
-4%
-
-Every mutation is logged.
-
----
-
-# Crossover Engine
-
-Strategy A
-
-Trend
-
-EMA8>EMA21
-
-RS
-
-WeeklyRS
-
-Exit
-
-EMA21
-
-Strategy B
-
-Trend
-
-Close>SMA50
-
-RS
-
-DailyRS
-
-Exit
-
-ATR
-
-Child
-
-EMA8>EMA21
-
-DailyRS
-
-ATR
-
-Genes are inherited independently.
-
----
-
-# Backtesting Engine
-
-Input
-
-Strategy
-
-ETF Universe
-
-Historical Indicators
-
-Output
-
-Trade Log
-
-Performance Metrics
-
-Exposure
-
-Equity Curve
-
-Drawdown
-
-The backtester should know nothing about optimization.
-
-Its only job is execution.
-
----
-
-# Trade Engine
-
-Per ETF
-
-State Machine
-
-Flat
-
-↓
-
-Entry
-
-↓
-
-Long
-
-↓
-
-Exit
-
-↓
-
-Flat
-
-The engine only evaluates rules.
-
-No optimization.
-
-No reasoning.
-
----
-
-# Experiment Database
-
-Every run becomes an experiment.
-
-Experiment ID
-
-Strategy ID
-
-Date
-
-Universe
-
-Metrics
-
-Trades
-
-Duration
-
-Parameters
-
-Never overwrite.
-
-Never delete.
-
-Everything becomes evidence.
-
----
-
-# Evidence Database
-
-This becomes the most valuable table.
-
-Every completed experiment contributes.
-
-Example
-
-Indicator
-
-EMA8>EMA21
-
-Appeared
-
-4820
-
-Winning
-
-3270
-
-Losing
-
-1550
-
-Win Rate
-
-67.8
-
-Profit Factor
-
-1.82
-
-Another
-
-WeeklyRS>0
-
-Appeared
-
-3100
-
-Winning
-
-2600
-
-Profit Factor
-
-2.31
-
-Another
-
-RSI>50
-
-Appeared
-
-5000
-
-Winning
-
-2480
-
-Profit Factor
-
-1.11
-
-Now the optimizer knows
-
-Weekly RS is extremely valuable.
-
-RSI contributes little.
-
----
-
-# Pair Statistics
-
-Even more valuable.
-
-Example
-
-EMA8>EMA21
-
-AND
-
-WeeklyRS>0
-
-Appeared
-
-1100
-
-Profit Factor
-
-2.8
-
-Another
-
-EMA8>EMA21
-
-AND
-
-RSI>50
-
-Profit Factor
-
-1.2
-
-Now we learn interactions.
-
----
-
-# Feature Importance
-
-Automatically compute
-
-Indicator Frequency
-
-Average Return
-
-Average Drawdown
-
-Profit Factor
-
-Sharpe
-
-Contribution Score
-
-Every indicator gets a score.
-
----
-
-# Rule Importance
-
-Same idea.
-
-Example
-
-Close>SMA50
-
-Average PF
-
-Average CAGR
-
-Average DD
-
-WeeklyRS>0
-
-Average PF
-
-Average CAGR
-
-Average DD
-
-Now we rank rules.
-
----
-
-# Strategy Families
-
-Cluster strategies.
-
-Trend Following
-
-Momentum
-
-Relative Strength
-
-Mean Reversion
-
-Market Rotation
-
-Breakouts
-
-Now compare families.
-
----
-
-# LLM Responsibilities
-
-The LLM should NEVER write SQL.
-
-The LLM should NEVER invent syntax.
-
-The LLM receives
-
-Top Experiments
-
-Worst Experiments
-
-Rule Statistics
-
-Feature Importance
-
-Indicator Importance
-
-Pair Importance
-
-Recent Discoveries
-
-The LLM returns
-
-Observations
-
-Hypotheses
-
-Potential Relationships
-
-Suggested Search Directions
-
-Example
-
-Weekly RS appears in 91% of profitable Leadership strategies.
-
-Daily RS contributes mostly as confirmation.
-
-Consider exploring stricter Weekly RS thresholds.
-
-Try removing RSI entirely.
-
-Investigate Close>SMA50.
-
-The LLM becomes a researcher.
-
----
-
-# Search Controller
-
-Uses LLM observations.
-
-Chooses
-
-Mutation Probability
-
-Rule Frequency
-
-Indicator Priority
-
-Threshold Exploration
-
-Universe Priority
-
-This determines the next generation.
-
----
-
-# Adaptive Search
-
-Poor indicators
-
-↓
-
-Less likely to appear
-
-Strong indicators
-
-↓
-
-More likely to appear
-
-The search becomes smarter over time.
-
----
-
-# Knowledge Base
-
-Permanent.
-
-Contains
-
-Every Experiment
-
-Every Trade
-
-Every Rule
-
-Every Metric
-
-Every Observation
-
-Never discarded.
-
-This is the memory of the optimizer.
-
----
-
-# Evidence Dashboard
-
-Eventually build a dashboard.
-
-Top Indicators
-
-Top Rule Pairs
-
-Top Exit Rules
-
-Best Universes
-
-Best Stops
-
-Most Robust Strategies
-
-Feature Importance
-
-Rule Importance
-
-Experiment Timeline
-
-Optimizer Learning Curve
-
-This becomes explainable AI.
-
----
-
-# Explainability
-
-Every strategy should answer
-
-Why was this generated?
-
-Why was it selected?
-
-Why did it outperform?
-
-Which rules mattered?
-
-Which rules hurt?
-
-The optimizer should always explain itself.
-
----
-
-# Success Criteria
-
-The optimizer should become progressively better without manually
-adding new strategies.
-
-After 50,000 experiments, the optimizer should possess measurable
-knowledge about:
-
-- Which indicators matter.
-- Which combinations matter.
-- Which universes behave differently.
-- Which exits work best.
-- Which rules are noise.
-
-The LLM should use evidence to guide exploration, not intuition.
-
-Eventually the optimizer should spend less time searching poor areas
-of the search space and more time refining promising regions based on
-its accumulated evidence.
-
-# Strategy lineage 
-Every strategy should know:
-
-Parent Strategy ID
-Mutation Type (e.g., threshold change, added rule, removed rule, crossover)
-Generation Number
-
-That lets you build an evolutionary tree such as:
-Baseline
-│
-├── + Weekly RS > 0
-│   ├── RSI 50 → 55
-│   ├── Remove RSI
-│   └── Add Close > SMA50
-│
-└── Replace EMA Exit with MRS Exit
-    ├── Tighten Stop Loss
-    └── Remove Daily RS
+- Read the current repository structure before changing files.
+- Preserve working behavior where possible.
+- Implement phase by phase.
+- After each phase, summarize changed files, new abstractions, tradeoffs, and any unresolved decisions.
+- Do not invent hidden requirements.
+- When repository details conflict with this plan, prefer the repository reality and document the deviation.
+- Ask for confirmation before making destructive schema or interface changes.

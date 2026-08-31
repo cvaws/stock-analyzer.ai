@@ -102,7 +102,7 @@ export default defineConfig({
             }
           }
           if (reqUrl === '/api/run-backtest') {
-            exec('uv run python -c "from graphs.graph import app; app.invoke({\'scan_date\': \'2026-08-01\'})"', { cwd: path.resolve((process as any).cwd(), '..') }, (error: any, _stdout: any, stderr: any) => {
+            exec('uv run python src/main.py --no-ui', { cwd: path.resolve((process as any).cwd(), '..') }, (error: any, _stdout: any, stderr: any) => {
               if (error) {
                 res.statusCode = 500;
                 res.end(JSON.stringify({ status: 'error', message: stderr || error.message }));
@@ -113,6 +113,7 @@ export default defineConfig({
             });
             return;
           }
+
           next();
         });
       }

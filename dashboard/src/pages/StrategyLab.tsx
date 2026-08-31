@@ -8,6 +8,9 @@ const StrategyLab: React.FC = () => {
     const [presetStrategies, setPresetStrategies] = useState<SavedStrategy[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [runningBacktest, setRunningBacktest] = useState<boolean>(false);
+    const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
+    const [optLogs, setOptLogs] = useState<string[]>([]);
+    const [optStatus, setOptStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
 
     const [selectedUniverse, setSelectedUniverse] = useState<string>('All ETFs');
     const [presetName, setPresetName] = useState<string>('');
@@ -44,6 +47,47 @@ const StrategyLab: React.FC = () => {
         await loadData();
         setRunningBacktest(false);
     };
+
+    const handleRunOptimizer = () => {
+        if (isOptimizing) return;
+        setIsOptimizing(true);
+        setOptStatus('running');
+        setOptLogs(['Connecting to Genetic Strategy Optimizer (71,000 parameter permutations)...']);
+
+        const SIDECAR_URL = (typeof window !== 'undefined' && (window as any).__SIDECAR_URL__) || 'http://127.0.0.1:8765';
+        const eventSource = new EventSource(`${SIDECAR_URL}/api/pipeline/optimize-stream`);
+
+        eventSource.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.message) {
+                    setOptLogs(prev => [...prev.slice(-30), data.message]);
+                }
+                if (data.status === 'completed') {
+                    setOptStatus('completed');
+                    setIsOptimizing(false);
+                    eventSource.close();
+                    loadData();
+                } else if (data.status === 'failed') {
+                    setOptStatus('failed');
+                    setIsOptimizing(false);
+                    eventSource.close();
+                }
+            } catch (err) {
+                console.error('Error parsing optimizer SSE:', err);
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('Optimizer SSE error:', err);
+            setOptLogs(prev => [...prev, 'Optimization session closed.']);
+            setIsOptimizing(false);
+            setOptStatus('completed');
+            eventSource.close();
+            loadData();
+        };
+    };
+
 
 
     // Calculate aggregated results for the selected strategy
@@ -93,6 +137,10 @@ const StrategyLab: React.FC = () => {
         }
     });
 
+    // Sort Trade Log by Entry Date descending (newest trades first)
+    allTradesList.sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+
+
 
     // Active strategy metadata
     const activeStrategy = presetStrategies?.find(s => s.name === presetName) || presetStrategies?.[0] || {};
@@ -117,10 +165,10 @@ const StrategyLab: React.FC = () => {
                         Preset strategy backtesting engine (Source of truth: <code style={{ color: '#3b82f6' }}>data/inputs/strategies.json</code>)
                     </p>
                 </div>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <button
                         onClick={handleRunBacktest}
-                        disabled={runningBacktest}
+                        disabled={runningBacktest || isOptimizing}
                         style={{
                             background: '#3b82f6',
                             color: '#fff',
@@ -131,15 +179,38 @@ const StrategyLab: React.FC = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.5rem',
-                            cursor: 'pointer',
-                            opacity: runningBacktest ? 0.7 : 1
+                            cursor: (runningBacktest || isOptimizing) ? 'not-allowed' : 'pointer',
+                            opacity: (runningBacktest || isOptimizing) ? 0.7 : 1
                         }}
                     >
                         {runningBacktest ? <Activity className="animate-spin" size={16} /> : <Play size={16} />}
                         {runningBacktest ? 'Running...' : 'Run Backtest'}
                     </button>
 
+                    <button
+                        onClick={handleRunOptimizer}
+                        disabled={isOptimizing || runningBacktest}
+                        title="Run Genetic Multi-Process Strategy Optimizer across 71,000 parameter permutations (~15m)"
+                        style={{
+                            background: isOptimizing ? 'rgba(234, 88, 12, 0.2)' : 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)',
+                            color: '#fff',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            borderRadius: '8px',
+                            padding: '0.6rem 1.25rem',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            cursor: isOptimizing ? 'wait' : 'pointer',
+                            boxShadow: isOptimizing ? 'none' : '0 2px 10px rgba(234, 88, 12, 0.35)',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        <Activity className={isOptimizing ? 'animate-spin' : ''} size={16} />
+                        {isOptimizing ? 'Optimizing (71k)...' : '⚡ Run Strategy Optimizer'}
+                    </button>
                 </div>
+
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
@@ -462,8 +533,62 @@ const StrategyLab: React.FC = () => {
                     </table>
                 </div>
             </div>
+
+            {/* Live Optimizer Execution Floating Modal */}
+            {isOptimizing && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    right: '24px',
+                    width: '480px',
+                    maxHeight: '280px',
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    border: '1px solid rgba(234, 88, 12, 0.4)',
+                    borderRadius: '16px',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)',
+                    backdropFilter: 'blur(12px)',
+                    zIndex: 10000,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    fontFamily: 'monospace'
+                }}>
+                    <div style={{
+                        padding: '10px 16px',
+                        background: 'rgba(234, 88, 12, 0.15)',
+                        borderBottom: '1px solid rgba(234, 88, 12, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Activity size={15} className="animate-spin" color="#f97316" />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ffedd5' }}>
+                                Genetic Strategy Optimizer ({optStatus})
+                            </span>
+                        </div>
+                    </div>
+                    <div style={{
+                        padding: '12px 16px',
+                        overflowY: 'auto',
+                        fontSize: '0.74rem',
+                        color: '#94a3b8',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        maxHeight: '220px'
+                    }}>
+                        {optLogs.map((log, i) => (
+                            <div key={i} style={{ color: log.includes('complete') ? '#4ade80' : log.includes('failed') ? '#f87171' : '#fdba74' }}>
+                                &gt; {log}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default StrategyLab;
+

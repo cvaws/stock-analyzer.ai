@@ -31,13 +31,27 @@ def run_backtests(state: GraphState) -> dict:
     """
     print("---RUNNING NODE: run_backtests---")
     strategies_path = "data/inputs/strategies.json"
+    custom_path = "data/inputs/custom_strategies.json"
     strategies_list = []
+
     if os.path.exists(strategies_path):
         try:
             with open(strategies_path, "r") as f:
                 strategies_list = json.load(f)
         except Exception as e:
             logger.error(f"Error loading {strategies_path}: {e}")
+
+    # Seamlessly merge custom user strategies (100% immune to optimizer overwrites)
+    if os.path.exists(custom_path):
+        try:
+            with open(custom_path, "r") as f:
+                custom_strats = json.load(f)
+                if isinstance(custom_strats, list):
+                    strategies_list.extend(custom_strats)
+                    logger.info(f"Loaded {len(custom_strats)} custom strategy entries from {custom_path}")
+        except Exception as e:
+            logger.error(f"Error loading {custom_path}: {e}")
+
 
     if not strategies_list:
         strategies_list = [{
@@ -83,7 +97,7 @@ def run_backtests(state: GraphState) -> dict:
             universe=strat.get("universe", "All ETFs"),
             entry_condition=entry_cond,
             exit_condition=exit_cond,
-            max_holding_bars=20,
+            max_holding_bars=999,
             stop_loss_pct=stop_loss_pct,
             profit_taking=profit_taking,
             tickers=strat_tickers

@@ -1,3 +1,22 @@
+const SIDECAR_URL = (typeof window !== 'undefined' && (window as any).__SIDECAR_URL__) || '';
+
+export const getApiUrl = (path: string): string => {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    if (SIDECAR_URL) {
+        // Map root data requests to FastAPI /api/data/ route when using sidecar
+        if (cleanPath.startsWith('/etfs_tracker.json') || 
+            cleanPath.startsWith('/market_regime.json') || 
+            cleanPath.startsWith('/strategy_lab.json') || 
+            cleanPath.startsWith('/theme_tracker.json') || 
+            cleanPath.startsWith('/default_scan.csv')) {
+            const fileName = cleanPath.split('?')[0].substring(1);
+            return `${SIDECAR_URL}/api/data/${fileName}`;
+        }
+        return `${SIDECAR_URL}${cleanPath}`;
+    }
+    return cleanPath;
+};
+
 export interface RSStock {
     rank: number;
     ticker: string;
@@ -691,28 +710,50 @@ export interface EtfHolding {
     holdingPercent: number;
 }
 
+export interface RrgHistoryPoint {
+    date: string;
+    rsWeeklyPct: number;
+    rsWeeklyVelocity: number;
+    quadrant: string;
+}
+
 export interface ThemeStockData {
     symbol: string;
     companyName: string;
     price: number;
     dailyChangePct?: number;
+    changeW?: number;
+    changeM?: number;
     subIndustry: string;
     sector: string;
     rsPercentile: number | string;
     rsScore: number | string;
     rsDailyPct: number | string;
     rsWeeklyPct: number | string;
+    rsDailyVelocity?: number;
+    rsWeeklyVelocity?: number;
+    rrgQuadrant?: string;
+    rrgHistory?: RrgHistoryPoint[];
+    rsRating?: number | string;
+    supertrend?: number;
+    supertrendDirection?: number;
+    stage2Trend?: boolean;
+    hasVDU?: boolean;
+    rsNewHigh250?: boolean;
+    volRatio?: number;
+    pctAboveLastBase?: number;
+    pctOff52WkHigh?: number;
 
-    return5D: number;
-    return10D: number;
-    return1M: number;
-    return3M: number;
+    return5D?: number;
+    return10D?: number;
+    return1M?: number;
+    return3M?: number;
     holdings?: EtfHolding[];
 }
 
 export async function fetchThemeTrackerData(): Promise<ThemeStockData[]> {
     try {
-        const res = await fetch('/theme_tracker.json');
+        const res = await fetch(getApiUrl('/theme_tracker.json'));
         if (res.ok) {
             return await res.json();
         }
@@ -725,7 +766,7 @@ export async function fetchThemeTrackerData(): Promise<ThemeStockData[]> {
 
 export async function fetchEtfTrackerData(): Promise<ThemeStockData[]> {
     try {
-        const res = await fetch(`/etfs_tracker.json?t=${Date.now()}`);
+        const res = await fetch(getApiUrl(`/etfs_tracker.json?t=${Date.now()}`));
         if (res.ok) {
             return await res.json();
         }
@@ -738,7 +779,7 @@ export async function fetchEtfTrackerData(): Promise<ThemeStockData[]> {
 
 export async function fetchMarketRegimeData(): Promise<any> {
     try {
-        const res = await fetch(`/market_regime.json?t=${Date.now()}`);
+        const res = await fetch(getApiUrl(`/market_regime.json?t=${Date.now()}`));
         if (res.ok) {
             return await res.json();
         }
@@ -789,7 +830,7 @@ export interface StrategyLabData {
 
 export async function fetchStrategyLabData(): Promise<StrategyLabData | null> {
     try {
-        const res = await fetch('/strategy_lab.json');
+        const res = await fetch(getApiUrl('/strategy_lab.json'));
         if (res.ok) {
             return await res.json();
         }
@@ -800,10 +841,13 @@ export async function fetchStrategyLabData(): Promise<StrategyLabData | null> {
     }
 }
 
-// New function to fetch preset strategies from data/inputs/strategies.json
 export async function fetchPresetStrategies(): Promise<SavedStrategy[]> {
     try {
-        const res = await fetch(`/data/inputs/strategies.json?cb=${Date.now()}`);
+        const data = await fetchStrategyLabData();
+        if (data && data.saved_strategies && data.saved_strategies.length > 0) {
+            return data.saved_strategies;
+        }
+        const res = await fetch(getApiUrl(`/data/inputs/strategies.json?cb=${Date.now()}`));
         if (res.ok) {
             return await res.json();
         }
@@ -814,15 +858,18 @@ export async function fetchPresetStrategies(): Promise<SavedStrategy[]> {
     }
 }
 
+
+
 export async function triggerBacktestRun(): Promise<boolean> {
     try {
-        const res = await fetch('/api/run-backtest', { method: 'POST' });
+        const res = await fetch(getApiUrl('/api/run-backtest'), { method: 'POST' });
         return res.ok;
     } catch (e) {
         console.error('[StrategyLab] Error triggering backtest run:', e);
         return false;
     }
 }
+
 
 
 

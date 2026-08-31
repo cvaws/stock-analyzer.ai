@@ -3,11 +3,23 @@ __pycache__/
 *.py[oc]
 build/
 dist/
+dist_bin/
+*.spec
 wheels/
 *.egg-info
 
-# Virtual environments
+# Virtual environments & node
 .venv
+node_modules/
+**/node_modules/
+dist-electron/
+**/dist-electron/
+**/dist/
+sidecar_bin/
+**/sidecar_bin/
+
+# Data & logs
 data/outputs/*
 data/db/*
 logs/*
+

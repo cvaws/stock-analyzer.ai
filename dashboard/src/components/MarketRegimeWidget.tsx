@@ -1,6 +1,5 @@
-import React from 'react';
-import { ShieldCheck, AlertTriangle, XCircle } from 'lucide-react';
-
+import React, { useState } from 'react';
+import { ShieldCheck, AlertTriangle, XCircle, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, Activity } from 'lucide-react';
 
 export interface GroupStat {
     healthy: number;
@@ -16,10 +15,26 @@ export interface MarketRegimeData {
     regime_code: string;
     confidence: number;
     groups: Record<string, GroupStat>;
+    group_trends?: Record<string, number>;
     why_bullets: string[];
     weak_canaries: string[];
     weak_breadth: string[];
     strong_defense: string[];
+    spy_dist_days?: number;
+    qqq_dist_days?: number;
+    macro_context?: {
+        tlt_bullish_for_equities: boolean;
+        vixy_bullish_for_equities: boolean;
+        summary: string;
+    };
+    divergence_warnings?: string[];
+    leader_changes?: {
+        newly_entered: string[];
+        newly_exited: Array<{ symbol: string; reason: string }>;
+        previous_leaders: string[];
+        current_leaders: string[];
+    };
+    scan_date?: string;
 }
 
 interface Props {
@@ -27,9 +42,23 @@ interface Props {
 }
 
 export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
+    const [showDivergence, setShowDivergence] = useState<boolean>(true);
     if (!regimeData) return null;
 
-    const { regime, confidence, groups, why_bullets, weak_canaries, weak_breadth, strong_defense } = regimeData;
+    const { 
+        regime, 
+        confidence, 
+        groups, 
+        group_trends = {}, 
+        why_bullets, 
+        weak_canaries, 
+        weak_breadth, 
+        strong_defense,
+        spy_dist_days = 0,
+        qqq_dist_days = 0,
+        macro_context,
+        divergence_warnings = []
+    } = regimeData;
 
     let regimeBadgeBg = '#064e3b';
     let regimeBadgeText = '#10b981';
@@ -48,6 +77,21 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
         RegimeIcon = XCircle;
     }
 
+    const renderTrendDelta = (groupName: string) => {
+        const delta = group_trends[groupName];
+        if (delta === undefined || delta === null) return null;
+        const isUp = delta > 2.0;
+        const isDown = delta < -2.0;
+        const color = isUp ? '#10b981' : isDown ? '#f87171' : 'var(--text-muted)';
+        const Icon = isUp ? TrendingUp : isDown ? TrendingDown : Minus;
+        return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', color, marginLeft: '4px', fontWeight: 600 }}>
+                <Icon size={12} />
+                {delta > 0 ? `+${delta}%` : `${delta}%`}
+            </span>
+        );
+    };
+
     return (
         <div style={{
             background: 'var(--bg-card)',
@@ -56,11 +100,11 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
             padding: '1.25rem 1.5rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '1.25rem',
+            gap: '1.1rem',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.24)'
         }}>
             {/* Header / Banner */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{ background: regimeBadgeBg, padding: '8px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <RegimeIcon size={24} color={regimeBadgeText} />
@@ -94,10 +138,67 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
                     <div style={{ textAlign: 'right' }}>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score</span>
                         <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#06b6d4', marginTop: '2px', display: 'block' }}>
-
                             {confidence}%
                         </span>
                     </div>
+                </div>
+            </div>
+
+            {/* Macro & Distribution Bar */}
+            <div style={{
+                display: 'flex',
+                gap: '0.75rem',
+                flexWrap: 'wrap',
+                background: 'rgba(255,255,255,0.02)',
+                padding: '0.6rem 0.8rem',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.05)',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '0.75rem'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Macro Context:</span>
+                    <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: macro_context?.tlt_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: macro_context?.tlt_bullish_for_equities ? '#10b981' : '#f87171'
+                    }}>
+                        TLT: {macro_context?.tlt_bullish_for_equities ? 'Risk-On' : 'Yields Rising/Defensive'}
+                    </span>
+                    <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: macro_context?.vixy_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: macro_context?.vixy_bullish_for_equities ? '#10b981' : '#f87171'
+                    }}>
+                        VIXY: {macro_context?.vixy_bullish_for_equities ? 'Calm' : 'Elevated'}
+                    </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Distribution (25-bar):</span>
+                    <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: spy_dist_days >= 5 ? 'rgba(239, 68, 68, 0.2)' : spy_dist_days >= 3 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+                        color: spy_dist_days >= 5 ? '#f87171' : spy_dist_days >= 3 ? '#fbbf24' : '#10b981'
+                    }}>
+                        SPY: {spy_dist_days}d
+                    </span>
+                    <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: qqq_dist_days >= 5 ? 'rgba(239, 68, 68, 0.2)' : qqq_dist_days >= 3 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+                        color: qqq_dist_days >= 5 ? '#f87171' : qqq_dist_days >= 3 ? '#fbbf24' : '#10b981'
+                    }}>
+                        QQQ: {qqq_dist_days}d
+                    </span>
                 </div>
             </div>
 
@@ -106,11 +207,11 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                         <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                            <th style={{ padding: '0.6rem 0.75rem', textAlign: 'left' }}>Group</th>
-                            <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Healthy</th>
-                            <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Total</th>
-                            <th style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>Percent</th>
-                            <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Status</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left' }}>Group</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Healthy</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Total</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Health % (5D Trend)</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -125,13 +226,25 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
 
                             return (
                                 <tr key={grp} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
-                                    <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>{grp}</td>
-                                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', fontWeight: 700 }}>{stat.healthy}</td>
-                                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--text-muted)' }}>{stat.total}</td>
-                                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 800, color: stat.percent >= 70 ? '#10b981' : stat.percent >= 40 ? '#f59e0b' : '#ef4444' }}>
-                                        {stat.percent}%
+                                    <td style={{ padding: '0.55rem 0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>{grp}</td>
+                                    <td style={{ padding: '0.55rem 0.75rem', textAlign: 'center', fontWeight: 700 }}>{stat.healthy}</td>
+                                    <td style={{ padding: '0.55rem 0.75rem', textAlign: 'center', color: 'var(--text-muted)' }}>{stat.total}</td>
+                                    <td style={{ padding: '0.55rem 0.75rem', textAlign: 'center', fontWeight: 800 }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minWidth: '130px' }}>
+                                            <span style={{
+                                                color: stat.percent >= 70 ? '#10b981' : stat.percent >= 40 ? '#f59e0b' : '#ef4444',
+                                                fontVariantNumeric: 'tabular-nums',
+                                                minWidth: '45px',
+                                                textAlign: 'right'
+                                            }}>
+                                                {stat.percent.toFixed(1)}%
+                                            </span>
+                                            <div style={{ minWidth: '65px', textAlign: 'left' }}>
+                                                {renderTrendDelta(grp)}
+                                            </div>
+                                        </div>
                                     </td>
-                                    <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>
+                                    <td style={{ padding: '0.55rem 0.75rem', textAlign: 'center' }}>
                                         <span style={{ background: statusBg, color: statusColor, padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}>
                                             {stat.status}
                                         </span>
@@ -144,14 +257,14 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
             </div>
 
             {/* Bottom Row: Why Bullets & Outliers */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', background: 'rgba(0,0,0,0.15)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', background: 'rgba(0,0,0,0.15)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                 <div>
-                    <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', margin: '0 0 0.5rem 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', margin: '0 0 0.4rem 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Why?
                     </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                         {why_bullets.map((bullet, i) => (
-                            <div key={i} style={{ fontSize: '0.8rem', fontWeight: 600, color: bullet.startsWith('✓') ? '#10b981' : '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div key={i} style={{ fontSize: '0.78rem', fontWeight: 600, color: bullet.startsWith('✓') ? '#10b981' : bullet.startsWith('⚠️') ? '#f59e0b' : '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {bullet}
                             </div>
                         ))}
@@ -159,10 +272,10 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
                 </div>
 
                 <div>
-                    <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', margin: '0 0 0.5rem 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', margin: '0 0 0.4rem 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Key Outliers & Watchlist
                     </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.78rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.75rem' }}>
                         <div>
                             <span style={{ color: 'var(--text-muted)' }}>Weak Canaries: </span>
                             <strong style={{ color: '#ef4444' }}>{weak_canaries.length > 0 ? weak_canaries.join(', ') : 'None'}</strong>
@@ -178,6 +291,51 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
                     </div>
                 </div>
             </div>
+
+            {/* Divergence Warnings Section */}
+            {divergence_warnings.length > 0 && (
+                <div style={{
+                    background: 'rgba(245, 158, 11, 0.08)',
+                    border: '1px solid rgba(245, 158, 11, 0.25)',
+                    borderRadius: '10px',
+                    padding: '0.6rem 0.8rem'
+                }}>
+                    <div 
+                        onClick={() => setShowDivergence(!showDivergence)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    >
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Activity size={14} /> Divergence Warnings ({divergence_warnings.length})
+                        </span>
+                        {showDivergence ? <ChevronUp size={14} color="#fbbf24" /> : <ChevronDown size={14} color="#fbbf24" />}
+                    </div>
+                    {showDivergence && (
+                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {divergence_warnings.map((warn, i) => (
+                                <div key={i} style={{ fontSize: '0.74rem', color: '#fef08a' }}>
+                                    {warn}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Formula & Rule Definition Footer */}
+            <div style={{
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                paddingTop: '0.5rem',
+                fontSize: '0.7rem',
+                color: 'var(--text-muted)',
+                textAlign: 'center',
+                fontWeight: 500,
+                lineHeight: 1.4
+            }}>
+                <div><strong>Formula:</strong> 🟢 <span style={{ color: '#10b981' }}>PRESS GAS</span>: Canaries &ge; 80% &amp; Leadership &ge; 70% &amp; Breadth &ge; 70% &amp; Defense &le; 30% | 🟡 <span style={{ color: '#f59e0b' }}>HALF SIZE</span>: Canaries &ge; 60% &amp; Leadership &ge; 40% &amp; Breadth &ge; 40% &amp; Defense &le; 50% | 🔴 <span style={{ color: '#ef4444' }}>STEP ASIDE</span>: Else</div>
+                <div style={{ marginTop: '2px', opacity: 0.85 }}><strong>Score:</strong> 40% &times; Canaries + 30% &times; Leadership + 20% &times; Breadth + 10% &times; (100 - Defense)</div>
+            </div>
         </div>
     );
 };
+
+

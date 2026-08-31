@@ -48,25 +48,45 @@ def init_db():
             ticker TEXT,
             date TEXT,
             ema_8 REAL,
+            ema_13 REAL,
             ema_21 REAL,
             sma_50 REAL,
+            ema_65 REAL,
             sma_200 REAL,
             rsi_14 REAL,
             atr_14 REAL,
+            atr14_pct REAL,
             vol_ma20 REAL,
             vol_ratio REAL,
+            vol_ma20_ratio REAL,
             mrs_daily_index REAL,
             mrs_weekly_index REAL,
+            return_20d_pct REAL,
             pct_off_52wk_high REAL,
             pct_off_52wk_low REAL,
+            supertrend REAL,
+            supertrend_direction INTEGER,
             PRIMARY KEY (ticker, date)
         )
     """)
 
+    # Migration: add supertrend columns if upgrading an existing database
+    for col_def in [
+        ("supertrend", "REAL"),
+        ("supertrend_direction", "INTEGER"),
+    ]:
+        col_name, col_type = col_def
+        try:
+            cursor.execute(f"ALTER TABLE etf_daily_indicators ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass  # Column already exists — safe to ignore
+
     cursor.execute("""
+
         CREATE TABLE IF NOT EXISTS daily_market_regime (
             date TEXT PRIMARY KEY,
             regime TEXT,
+
             regime_code TEXT,
             confidence REAL,
             canaries_health REAL,
@@ -240,25 +260,23 @@ def ingest_etfs(state: GraphState) -> dict:
         else:
             incremental_sync.append((t, last_date))
 
-    # 1. Backfill new/missing tickers (3 Years)
+    # 1. Backfill new/missing tickers (5 Years)
     if needs_backfill:
-        print(f"⚡ Backfilling 3-year history for {len(needs_backfill)} new tickers: {needs_backfill}...")
+        print(f"📥 Backfilling 5 years of OHLCV history for {len(needs_backfill)} new tickers...")
         try:
-            bf_data = yf.download(needs_backfill, period="3y", interval="1d", auto_adjust=True, group_by="ticker", threads=True)
+            df_backfill = yf.download(needs_backfill, period="5y", interval="1d", group_by="ticker", auto_adjust=True, progress=True)
             for t in needs_backfill:
-                if len(needs_backfill) == 1:
-                    df_t = bf_data.dropna(how="all").copy()
-                else:
-                    df_t = bf_data[t].dropna(how="all").copy() if t in bf_data else pd.DataFrame()
-                
-                if not df_t.empty:
-                    if isinstance(df_t.columns, pd.MultiIndex):
-                        df_t.columns = [str(c[-1]).capitalize() for c in df_t.columns]
+                try:
+                    if len(needs_backfill) == 1:
+                        sub_df = df_backfill.dropna(subset=['Close']) if 'Close' in df_backfill else pd.DataFrame()
                     else:
-                        df_t.columns = [str(c).capitalize() for c in df_t.columns]
-                    save_ohlcv_to_sqlite(t, df_t)
+                        sub_df = df_backfill[t].dropna(subset=['Close']) if t in df_backfill else pd.DataFrame()
+                    if not sub_df.empty:
+                        save_ohlcv_to_sqlite(t, sub_df)
+                except Exception as ex:
+                    logger.warning(f"Error processing backfill for {t}: {ex}")
         except Exception as e:
-            logger.error(f"Error during 3Y backfill: {e}")
+            logger.error(f"Error executing 5y backfill download: {e}")
 
     # 2. Incremental sync for existing tickers from last_date
     if incremental_sync:

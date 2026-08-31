@@ -37,15 +37,25 @@ def detect_patterns(state: GraphState) -> dict:
             pivot_price = round(float(recent["High"].iloc[-15:].max()), 2)
             is_vcp = bool(vcp_contracted and info.get("stage2_trend") and depth_pct < 25.0)
 
+            # Extension score: % above last consolidation pivot/base
+            # If current price is near or below pivot, extension is <= 0% (buyable)
+            # If current price has rallied way above pivot, extension is positive (extended)
+            if pivot_price > 0:
+                pct_above_last_base = round(((current_close - pivot_price) / pivot_price) * 100, 2)
+            else:
+                pct_above_last_base = 0.0
+
             detected_patterns[ticker] = {
                 "is_vcp": is_vcp,
                 "depth_pct": depth_pct,
                 "vcp_contracted": vcp_contracted,
                 "vdu_signal": vdu_signal,
-                "pivot_price": pivot_price
+                "pivot_price": pivot_price,
+                "pct_above_last_base": pct_above_last_base
             }
         except Exception as e:
             logger.error(f"Error detecting patterns for {ticker}: {e}")
 
     print(f"Pattern detection complete for {len(detected_patterns)} ETFs.")
     return {"detected_patterns": detected_patterns}
+

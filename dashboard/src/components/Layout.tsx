@@ -1,40 +1,25 @@
-import React, { useState } from 'react';
-import Sidebar from './Sidebar';
+import React from 'react';
+import TopNav from './TopNav';
 
 interface LayoutProps {
     children: React.ReactNode;
     activeTab: string;
     setActiveTab: (tab: string) => void;
-    onRefresh: () => void;
-    isRefreshing: boolean;
-    onScanUpload: (file: File) => void;
-    onScanClear: () => void;
-    scanCount: number;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onRefresh, isRefreshing, onScanUpload, onScanClear, scanCount }) => {
-    const [isCollapsed, setIsCollapsed] = useState(false);
-
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', backgroundColor: 'var(--bg-dark)' }}>
-            <Sidebar
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                isCollapsed={isCollapsed}
-                setIsCollapsed={setIsCollapsed}
-                onRefresh={onRefresh}
-                isRefreshing={isRefreshing}
-                onScanUpload={onScanUpload}
-                onScanClear={onScanClear}
-                scanCount={scanCount}
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100vw', backgroundColor: 'var(--bg-dark)' }}>
+            {/* Top Navigation Bar with window drag region */}
+            <TopNav activeTab={activeTab} setActiveTab={setActiveTab} />
+
             <main style={{
                 flex: 1,
                 padding: '1rem',
                 overflowY: 'auto',
                 backgroundColor: 'var(--bg-main)',
-                maxHeight: '100vh',
-                transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                maxHeight: 'calc(100vh - 46px)',
+                position: 'relative'
             }}>
                 <div style={{
                     position: 'absolute',
@@ -55,3 +40,4 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onRe
 };
 
 export default Layout;
+

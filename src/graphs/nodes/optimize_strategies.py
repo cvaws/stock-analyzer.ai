@@ -4,38 +4,13 @@ import logging
 import re
 import sqlite3
 from typing import Dict, Any, List, Optional, Tuple
-from langchain_ollama import ChatOllama
 from graphs.state import GraphState
 from strategy.backtest_engine import SQLStrategyEngine, SQLStrategyConfig
-from config_loader import load_config
+from config_loader import load_config, get_path_config
 
 logger = logging.getLogger(__name__)
 
 LLM_RULES_PATH = "data/inputs/llm_rules.json"
-
-
-def clean_json_text(text: str) -> str:
-    """Extracts JSON array or object string from LLM response text."""
-    text = text.strip()
-    match = re.search(r"(\[.*\]|\{.*\})", text, re.DOTALL)
-    if match:
-        return match.group(1)
-    return text
-
-
-def load_llm_rules() -> Dict[str, Any]:
-    """Loads static LLM rules and constraints from data/inputs/llm_rules.json."""
-    if os.path.exists(LLM_RULES_PATH):
-        try:
-            with open(LLM_RULES_PATH, "r") as f:
-                rules = json.load(f)
-            logger.info(f"Loaded LLM rules from {LLM_RULES_PATH} (version {rules.get('version', 'unknown')})")
-            return rules
-        except Exception as e:
-            logger.error(f"Failed to load {LLM_RULES_PATH}: {e}. Using empty rules.")
-    else:
-        logger.warning(f"{LLM_RULES_PATH} not found. Using empty LLM rules.")
-    return {}
 
 
 def compute_regime_distribution(db_path: str) -> Dict[str, Any]:
@@ -121,144 +96,42 @@ def compute_universe_groups(db_path: str) -> Dict[str, List[str]]:
         return {"All ETFs": []}
 
 
-def build_prompt(
-    target_uni: str,
-    universe_tickers: List[str],
-    llm_rules: Dict[str, Any],
-    regime_ctx: Dict[str, Any],
-    zero_trade_recovery: bool = False,
-) -> str:
-    """
-    Builds the full LLM prompt from llm_rules.json (static) + live regime distribution (dynamic).
-    All context that reaches the LLM comes from llm_rules.json or computed SQLite facts.
-    """
-    # --- Static rules from llm_rules.json ---
-    entry_guidance = llm_rules.get("entry_guidance", {})
-    preferred_baseline = entry_guidance.get("preferred_baseline", [])
-    avoid_conditions = entry_guidance.get("avoid_conditions", [])
-    universe_hints = llm_rules.get("universe_hints", {})
-    # Use universe-specific hint if it exists, otherwise fall back to _default
-    universe_hint = universe_hints.get(target_uni, universe_hints.get("_default", ""))
-    hard_exit = llm_rules.get("exit_rules", {}).get("always_require", "close < ema_21 OR r.regime_code = 'STEP_ASIDE'")
-    recovery_msg = llm_rules.get("zero_trade_recovery", {}).get("message", "") if zero_trade_recovery else ""
+def generate_parameter_variants(base_strat: Dict[str, Any]) -> List[Dict[str, Any]]:
 
-    # --- Dynamic: live tickers for this universe from SQLite ---
-    tickers_str = ", ".join(universe_tickers) if universe_tickers else "(see database)"
+    """Generates parameter-tuned variants of a base strategy hypothesis driven dynamically by backtest_rules.yaml."""
+    from research.generator.yaml_rules_loader import YAMLBacktestRulesLoader
+    yaml_loader = YAMLBacktestRulesLoader()
 
-    # --- Dynamic facts from SQLite ---
-    dist = regime_ctx.get("distribution", {})
-    date_start = regime_ctx.get("date_range_start", "unknown")
-    date_end = regime_ctx.get("date_range_end", "unknown")
-    total_days = regime_ctx.get("total_trading_days", 0)
+    sl_variations = yaml_loader.get_stop_loss_range()
+    if not sl_variations:
+        sl_variations = [0.03, 0.05, 0.07, 0.08]
 
-    regime_lines = []
-    for code, stats in dist.items():
-        regime_lines.append(f"  - {code}: {stats['pct']}% of days ({stats['count']} of {total_days} trading days)")
-    regime_summary = "\n".join(regime_lines) if regime_lines else "  - No regime data available."
-
-    preferred_str = "\n".join(f"  - {c}" for c in preferred_baseline)
-    avoid_str = "\n".join(f"  - {c}" for c in avoid_conditions)
-
-    prompt = f"""
-You are an expert quantitative ETF trading strategy researcher.
-Formulate 3 to 5 distinct, high-probability technical trading strategies for the ETF universe: '{target_uni}'.
-
-{"⚠️  " + recovery_msg if recovery_msg else ""}
-
-UNIVERSE: '{target_uni}'
-CURRENT ETFs IN THIS UNIVERSE (loaded live from database — this list may expand over time):
-  {tickers_str}
-
-UNIVERSE STRATEGY CONTEXT:
-{universe_hint}
-
-LIVE MARKET REGIME DISTRIBUTION (from actual database: {date_start} to {date_end}, {total_days} trading days):
-{regime_summary}
-IMPORTANT: Design your entry conditions to be compatible with the above regime distribution. Strategies requiring rare regimes will produce 0 trades.
-
-MANDATORY EXIT RULE (always guaranteed — do not omit):
-  All strategies will have this exit enforced: {hard_exit}
-  Your exit_rules may add additional conditions, but this exit is always present.
-
-PREFERRED ENTRY BASELINE (use these as starting filters, then layer additional conditions):
-{preferred_str}
-
-CONDITIONS TO AVOID:
-{avoid_str}
-
-AVAILABLE INDICATOR COLUMNS IN SQL BACKTEST ENGINE:
-- Joined Market Regime Table (`r`):
-  - `r.regime_code` IN ('PRESS_GAS', 'HALF_SIZE', 'STEP_ASIDE')
-  - `r.confidence` (0.0 to 100.0)
-- Technical Indicators (`i` & `o`):
-  - `ema_8`, `ema_21`, `sma_50`, `sma_200`, `close`, `high`, `low`
-  - `mrs_daily_index` (Mansfield RS vs SPY daily — >= 0.0 means outperforming SPY)
-  - `mrs_weekly_index` (Mansfield RS vs SPY weekly)
-  - `rsi_14` (RSI 14-period)
-  - `vol_ratio` (Volume / 20-day avg volume)
-  - `pct_off_52wk_high` (0.0 = at 52W high, -5.0 = 5% off 52W high)
-  - `pct_off_52wk_low` (0.0 = at 52W low, 10.0 = 10% above 52W low)
-
-CRITICAL OUTPUT RULES:
-1. `universe` MUST be exactly '{target_uni}'.
-2. All entry/exit conditions MUST be valid SQL boolean expressions.
-3. Output MUST be a raw JSON array — NO markdown code blocks or extra text around it.
-
-JSON FORMAT:
-[
-  {{
-    "name": "Descriptive Strategy Name",
-    "universe": "{target_uni}",
-    "risk_management": {{ "stop_loss_pct": 0.05 }},
-    "profit_taking": [
-      {{ "profit_target_pct": 0.15, "position_trim_pct": 0.20 }},
-      {{ "profit_target_pct": 0.30, "position_trim_pct": 0.20 }}
-    ],
-    "entry_rules": [
-      {{ "conditions": "ema_8 > ema_21 AND rsi_14 BETWEEN 30 AND 70 AND mrs_daily_index >= 0.0 AND r.regime_code IN ('PRESS_GAS', 'HALF_SIZE')" }}
-    ],
-    "exit_rules": [
-      {{ "conditions": "close < ema_21 OR r.regime_code = 'STEP_ASIDE'" }}
+    pt_variations = [
+        [
+            {"profit_target_pct": 0.15, "position_trim_pct": 0.20},
+            {"profit_target_pct": 0.30, "position_trim_pct": 0.20}
+        ],
+        [
+            {"profit_target_pct": 0.20, "position_trim_pct": 0.20},
+            {"profit_target_pct": 0.35, "position_trim_pct": 0.20},
+            {"profit_target_pct": 0.50, "position_trim_pct": 0.20}
+        ],
+        [
+            {"profit_target_pct": 0.25, "position_trim_pct": 0.25},
+            {"profit_target_pct": 0.50, "position_trim_pct": 0.25}
+        ]
     ]
-  }}
-]
-"""
-    return prompt.strip()
 
-
-# Parameter grid variations for multi-generation optimization
-STOP_LOSS_VARIATIONS = [0.03, 0.05, 0.07, 0.08]
-
-PROFIT_TAKING_VARIATIONS = [
-    [
-        {"profit_target_pct": 0.15, "position_trim_pct": 0.20},
-        {"profit_target_pct": 0.30, "position_trim_pct": 0.20}
-    ],
-    [
-        {"profit_target_pct": 0.20, "position_trim_pct": 0.20},
-        {"profit_target_pct": 0.35, "position_trim_pct": 0.20},
-        {"profit_target_pct": 0.50, "position_trim_pct": 0.20}
-    ],
-    [
-        {"profit_target_pct": 0.25, "position_trim_pct": 0.25},
-        {"profit_target_pct": 0.50, "position_trim_pct": 0.25}
-    ]
-]
-
-
-def generate_parameter_variants(base_strat: Dict[str, Any], llm_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Generates parameter-tuned variants of a base strategy hypothesis with hard exit injection."""
     variants = []
     base_name = base_strat.get("name", "Strategy")
     base_entry = base_strat.get("entry_rules", [{}])[0].get("conditions", "ema_8 > ema_21")
-    base_exit_raw = base_strat.get("exit_rules", [{}])[0].get("conditions", "close < ema_21")
-    base_exit = inject_exit_rule(llm_rules, base_exit_raw)
+    base_exit = base_strat.get("exit_rules", [{}])[0].get("conditions", "close < ema_21")
     universe = base_strat.get("universe", "All ETFs")
 
     v_idx = 1
-    for stop_loss in STOP_LOSS_VARIATIONS:
-        for pt_plan in PROFIT_TAKING_VARIATIONS:
-            variant_name = f"{base_name} [Opt-v{v_idx} SL={int(stop_loss*100)}%]"
+    for stop_loss in sl_variations:
+        for pt_plan in pt_variations:
+            variant_name = f"{base_name} [Opt-v{v_idx} SL={round(stop_loss*100, 1)}%]"
             variants.append({
                 "name": variant_name,
                 "universe": universe,
@@ -269,6 +142,8 @@ def generate_parameter_variants(base_strat: Dict[str, Any], llm_rules: Dict[str,
             })
             v_idx += 1
     return variants
+
+
 
 
 def optimize_strategies(state: GraphState) -> dict:
@@ -316,146 +191,274 @@ def optimize_strategies(state: GraphState) -> dict:
     ]
     logger.info(f"Optimization will run across {len(optimization_rounds)} universe rounds: {[r['target_universe'] for r in optimization_rounds]}")
 
-    llm = ChatOllama(model=model_name, temperature=0.3)
     promoted_champions = []
 
-    for round_idx, round_info in enumerate(optimization_rounds, 1):
-        target_uni = round_info["target_universe"]
-        universe_tickers = round_info["tickers"]
 
-        logger.info(f"\n==================================================")
-        logger.info(f"🏆 OPTIMIZATION ROUND {round_idx}/{len(optimization_rounds)}: UNIVERSE '{target_uni}' ({len(universe_tickers)} ETFs)")
+def evaluate_single_universe(round_info: Dict[str, Any], round_idx: int, total_rounds: int) -> Optional[Dict[str, Any]]:
+    """Evaluates exhaustive strategy permutations in parallel for a single ETF universe."""
+    import sys
+    from research.generator.yaml_rules_loader import YAMLBacktestRulesLoader
+    yaml_loader = YAMLBacktestRulesLoader()
 
-        zero_trade_recovery = False
-        base_candidates = []
 
-        # Attempt LLM hypothesis generation (with one zero-trade recovery retry)
-        for attempt in range(1, 3):
-            prompt = build_prompt(target_uni, universe_tickers, llm_rules, regime_ctx, zero_trade_recovery=zero_trade_recovery)
+    target_uni = round_info["target_universe"]
+    universe_tickers = round_info["tickers"]
+
+    logger.info(f"🏆 OPTIMIZATION ROUND {round_idx}/{total_rounds}: UNIVERSE '{target_uni}' ({len(universe_tickers)} ETFs)")
+    sys.stdout.flush()
+
+    # 1. Trend Crossovers Pool (Generated dynamically from backtest_rules.yaml trend_series)
+    trend_pairs = yaml_loader.generate_trend_pairs()
+
+
+    # 2. Relative Strength Thresholds Pool
+    mrs_d_vals = yaml_loader.get_indicator_values_array("mrs_daily_index")
+    mrs_d_steps = [x for x in mrs_d_vals if x in [-0.2, -0.1, 0.0, 0.05, 0.10, 0.15, 0.20]] or [0.0]
+
+    # 3. RSI Momentum Thresholds Pool
+    rsi_vals = yaml_loader.get_indicator_values_array("rsi_14")
+    rsi_steps = [x for x in rsi_vals if x in [40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0]] or [50.0]
+
+    # 4. Exhaustively combine indicator building blocks (Entry=AND)
+    base_candidates = []
+    comb_idx = 1
+    for tr_rule in trend_pairs:
+        for mrs_d in mrs_d_steps:
+            for rsi_val in rsi_steps:
+                entry_cond = f"{tr_rule} AND mrs_daily_index > {mrs_d} AND rsi_14 >= {rsi_val} AND r.regime_code IN ('PRESS_GAS', 'HALF_SIZE')"
+                exit_cond = "close < ema_21 OR mrs_daily_index < 0.0"
+                
+                base_candidates.append({
+                    "name": f"{target_uni} Grid Strategy [{comb_idx}] ({tr_rule} | MRS>{mrs_d} | RSI>={rsi_val})",
+                    "universe": target_uni,
+                    "risk_management": {"stop_loss_pct": 0.05},
+                    "profit_taking": [
+                        {"profit_target_pct": 0.20, "position_trim_pct": 0.20},
+                        {"profit_target_pct": 0.35, "position_trim_pct": 0.20}
+                    ],
+                    "entry_rules": [{"conditions": entry_cond}],
+                    "exit_rules": [{"conditions": exit_cond}]
+                })
+                comb_idx += 1
+
+    # Build parameter sweep grid
+    full_evaluation_queue: List[Dict[str, Any]] = []
+    for b_strat in base_candidates:
+        full_evaluation_queue.append(b_strat)
+        full_evaluation_queue.extend(generate_parameter_variants(b_strat))
+
+    total_queue_len = len(full_evaluation_queue)
+    logger.info(f"Evaluating {total_queue_len:,} parameter combinations in parallel for '{target_uni}'...")
+
+    sys.stdout.flush()
+
+    champion_strat: Optional[Dict[str, Any]] = None
+    max_net_pnl = -999999.0
+    champion_metrics: Dict[str, Any] = {}
+
+    for eval_idx, strat in enumerate(full_evaluation_queue, 1):
+        if eval_idx == 1 or eval_idx % 1000 == 0 or eval_idx == total_queue_len:
+            pct = round((eval_idx / total_queue_len) * 100, 1)
+            logger.info(f"⏳ ['{target_uni}'] Combination {eval_idx:,}/{total_queue_len:,} ({pct}%) evaluated...")
+            sys.stdout.flush()
+
+        strat_name = strat.get("name", f"Variant {eval_idx}")
+        entry_cond = strat.get("entry_rules", [{}])[0].get("conditions", "ema_8 > ema_21")
+        exit_cond = strat.get("exit_rules", [{}])[0].get("conditions", "close < ema_21")
+
+        risk_mgmt = strat.get("risk_management", {})
+        stop_loss_pct = risk_mgmt.get("stop_loss_pct")
+        if stop_loss_pct is not None:
+            stop_loss_pct = float(stop_loss_pct) * 100.0 if float(stop_loss_pct) <= 1.0 else float(stop_loss_pct)
+
+        profit_taking = strat.get("profit_taking", [])
+        if isinstance(profit_taking, dict):
+            profit_taking = [profit_taking]
+
+        # Institutional Walk-Forward & Fitness Score Evaluation
+        # 1. Train Split Evaluation (2021-08-01 to 2024-03-31)
+        config_train = SQLStrategyConfig(
+            name=strat_name,
+            universe=target_uni,
+            entry_condition=entry_cond,
+            exit_condition=exit_cond,
+            max_holding_bars=999,
+            stop_loss_pct=stop_loss_pct,
+            profit_taking=profit_taking,
+            start_date="2021-08-01",
+            end_date="2024-03-31",
+            tickers=strat.get("tickers")
+        )
+        res_train = SQLStrategyEngine(config_train).run_universe_backtest()
+
+        if not res_train:
+            continue
+
+        train_trades = sum(v["total_trades"] for v in res_train.values())
+        if train_trades < 20:
+            continue
+
+        train_wins = sum(sum(1 for t in v["trades"] if t["pnl_pct"] > 0) for v in res_train.values())
+        train_pnl = round(sum(v["net_pnl_dollar"] for v in res_train.values()), 2)
+        train_gain = sum(sum(t["pnl_dollar"] for t in v["trades"] if t["pnl_dollar"] > 0) for v in res_train.values())
+        train_loss = abs(sum(sum(t["pnl_dollar"] for t in v["trades"] if t["pnl_dollar"] < 0) for v in res_train.values()))
+
+        train_win_rate = round((train_wins / train_trades) * 100, 1) if train_trades > 0 else 0.0
+        train_pf = round(train_gain / train_loss, 2) if train_loss > 0 else (99.0 if train_pnl > 0 else 0.0)
+        train_expectancy = round(train_pnl / train_trades, 2) if train_trades > 0 else 0.0
+
+        # Constraints Gate on Train set: Min 20 trades, PF >= 1.30, WinRate >= 50%, NetPnL > 0
+        if train_win_rate < 50.0 or train_pf < 1.30 or train_pnl <= 0:
+            continue
+
+        # 2. Validation Split Evaluation (2024-04-01 to 2025-06-30)
+        config_val = SQLStrategyConfig(
+            name=strat_name,
+            universe=target_uni,
+            entry_condition=entry_cond,
+            exit_condition=exit_cond,
+            max_holding_bars=999,
+            stop_loss_pct=stop_loss_pct,
+            profit_taking=profit_taking,
+            start_date="2024-04-01",
+            end_date="2025-06-30",
+            tickers=strat.get("tickers")
+        )
+        res_val = SQLStrategyEngine(config_val).run_universe_backtest()
+        val_pnl = sum(v["net_pnl_dollar"] for v in res_val.values()) if res_val else 0.0
+
+        # Promotion Requirement: Must be profitable in Validation split
+        if val_pnl <= 0:
+            continue
+
+        # 3. Out-Of-Sample Test Split Evaluation (2025-07-01 to Present)
+        config_test = SQLStrategyConfig(
+            name=strat_name,
+            universe=target_uni,
+            entry_condition=entry_cond,
+            exit_condition=exit_cond,
+            max_holding_bars=999,
+            stop_loss_pct=stop_loss_pct,
+            profit_taking=profit_taking,
+            start_date="2025-07-01",
+            tickers=strat.get("tickers")
+        )
+        res_test = SQLStrategyEngine(config_test).run_universe_backtest()
+        test_pnl = sum(v["net_pnl_dollar"] for v in res_test.values()) if res_test else 0.0
+
+        # Promotion Requirement: Must be profitable in Test split
+        if test_pnl <= 0:
+            continue
+
+        # Multi-Factor Institutional Fitness Score Calculation
+        # Weights: PF (35%), Expectancy (25%), Total PnL (20%), Win Rate (10%), Trades Bonus (10%)
+        fitness_score = round((train_pf * 0.35) + (train_expectancy * 0.0025) + (train_pnl * 0.0002) + (train_win_rate * 0.10) + (train_trades * 0.01), 4)
+
+        if fitness_score > max_net_pnl:
+            max_net_pnl = fitness_score
+            champion_strat = strat
+            champion_metrics = {
+                "trades": train_trades,
+                "win_rate": train_win_rate,
+                "profit_factor": train_pf,
+                "net_pnl": train_pnl,
+                "fitness_score": fitness_score
+            }
+            logger.info(f"  🔥 NEW CHAMPION FOR '{target_uni}': '{strat_name}' → Fitness={fitness_score}, Train PnL=${train_pnl}, WinRate={train_win_rate}%, PF={train_pf}, Trades={train_trades}")
+            sys.stdout.flush()
+
+    if champion_strat:
+        c_name = champion_strat.get("name")
+        logger.info(f"🏆 CHAMPION PROMOTED FOR '{target_uni}': '{c_name}' (Fitness={champion_metrics['fitness_score']}, PnL=${champion_metrics['net_pnl']}, WinRate={champion_metrics['win_rate']}%, PF={champion_metrics['profit_factor']})")
+        sys.stdout.flush()
+        return champion_strat
+    else:
+        logger.info(f"Round complete for '{target_uni}' — no candidate met quality thresholds.")
+        sys.stdout.flush()
+        return None
+
+
+
+def optimize_strategies(state: GraphState) -> dict:
+    """
+    Autonomous Profit-Maximizing Parallel Declarative Genetic Strategy Engine.
+    Executes all universe rounds in parallel using ProcessPoolExecutor across CPU cores.
+    """
+    cfg_loader = get_path_config()
+    strategies_path = cfg_loader.get("strategies_json", "data/inputs/strategies.json")
+    existing_strategies = []
+
+    if os.path.exists(strategies_path):
+        try:
+            with open(strategies_path, "r") as f:
+                existing_strategies = json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading {strategies_path}: {e}")
+
+    cfg = load_config()
+    db_path = cfg.get("paths", {}).get("etf_db", "data/db/etfs.db")
+
+    # Dynamically build optimization rounds from all ETF groups in the database
+    universe_groups = compute_universe_groups(db_path)
+    optimization_rounds = [
+        {"target_universe": uni, "tickers": tickers}
+        for uni, tickers in universe_groups.items()
+    ]
+    total_rounds = len(optimization_rounds)
+    logger.info(f"\n==================================================")
+    logger.info(f"=== STARTING PARALLEL DECLARATIVE GENETIC STRATEGY OPTIMIZER ({total_rounds} Universes) ===")
+    logger.info(f"Optimization will run across universes in parallel: {[r['target_universe'] for r in optimization_rounds]}")
+    import sys
+    sys.stdout.flush()
+
+    promoted_champions = []
+
+    # Execute all universe rounds in parallel across CPU cores
+    import concurrent.futures
+    max_workers = min(total_rounds, os.cpu_count() or 4)
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(evaluate_single_universe, round_info, idx, total_rounds): round_info["target_universe"]
+            for idx, round_info in enumerate(optimization_rounds, 1)
+        }
+
+
+        for future in concurrent.futures.as_completed(futures):
+            uni_name = futures[future]
             try:
-                logger.info(f"Formulating hypotheses (attempt {attempt}) using '{model_name}'...")
-                response = llm.invoke(prompt)
-                raw_content = response.content if hasattr(response, "content") else str(response)
-                cleaned = clean_json_text(raw_content)
-                parsed = json.loads(cleaned)
-                if isinstance(parsed, list) and parsed:
-                    base_candidates = parsed
-                    logger.info(f"Received {len(base_candidates)} base hypotheses for '{target_uni}'.")
-                    break
+                champ = future.result()
+                if champ:
+                    promoted_champions.append(champ)
             except Exception as e:
-                logger.warning(f"LLM hypothesis generation attempt {attempt} for '{target_uni}' failed ({e}).")
-
-        if not base_candidates:
-            logger.warning(f"No LLM hypotheses for '{target_uni}'. Using fallback template.")
-            base_candidates = [{
-                "name": f"{target_uni} Momentum Trend Fallback",
-                "universe": target_uni,
-                "risk_management": {"stop_loss_pct": 0.05},
-                "profit_taking": [{"profit_target_pct": 0.20, "position_trim_pct": 0.20}],
-                "entry_rules": [{"conditions": "ema_8 > ema_21 AND rsi_14 BETWEEN 30 AND 70 AND mrs_daily_index >= 0.0 AND r.regime_code IN ('PRESS_GAS', 'HALF_SIZE')"}],
-                "exit_rules": [{"conditions": "close < ema_21 OR r.regime_code = 'STEP_ASIDE'"}]
-            }]
-
-        # Hard-inject mandatory exit rule from llm_rules.json into each base candidate
-        for cand in base_candidates:
-            raw_exit = cand.get("exit_rules", [{}])[0].get("conditions", "")
-            cand["exit_rules"] = [{"conditions": inject_exit_rule(llm_rules, raw_exit)}]
-
-        # Build full parameter sweep grid
-        full_evaluation_queue: List[Dict[str, Any]] = []
-        for b_strat in base_candidates:
-            full_evaluation_queue.append(b_strat)
-            full_evaluation_queue.extend(generate_parameter_variants(b_strat, llm_rules))
-
-        logger.info(f"Evaluating {len(full_evaluation_queue)} parameter combinations for '{target_uni}'...")
-
-        champion_strat: Optional[Dict[str, Any]] = None
-        max_net_pnl = -999999.0
-        champion_metrics: Dict[str, Any] = {}
-        all_zero_trades = True
-
-        for eval_idx, strat in enumerate(full_evaluation_queue, 1):
-            strat_name = strat.get("name", f"Variant {eval_idx}")
-            entry_cond = strat.get("entry_rules", [{}])[0].get("conditions", "ema_8 > ema_21")
-            exit_cond = strat.get("exit_rules", [{}])[0].get("conditions", "close < ema_21")
-
-            risk_mgmt = strat.get("risk_management", {})
-            stop_loss_pct = risk_mgmt.get("stop_loss_pct")
-            if stop_loss_pct is not None:
-                stop_loss_pct = float(stop_loss_pct) * 100.0 if float(stop_loss_pct) <= 1.0 else float(stop_loss_pct)
-
-            profit_taking = strat.get("profit_taking", [])
-            if isinstance(profit_taking, dict):
-                profit_taking = [profit_taking]
-
-            config = SQLStrategyConfig(
-                name=strat_name,
-                universe=target_uni,
-                entry_condition=entry_cond,
-                exit_condition=exit_cond,
-                max_holding_bars=20,
-                stop_loss_pct=stop_loss_pct,
-                profit_taking=profit_taking,
-                tickers=strat.get("tickers")
-            )
-
-            engine = SQLStrategyEngine(config)
-            backtest_res = engine.run_universe_backtest()
-
-            if backtest_res:
-                total_trades = sum(v["total_trades"] for v in backtest_res.values())
-                if total_trades > 0:
-                    all_zero_trades = False
-
-                total_wins = sum(sum(1 for t in v["trades"] if t["pnl_pct"] > 0) for v in backtest_res.values())
-                net_pnl = round(sum(v["net_pnl_dollar"] for v in backtest_res.values()), 2)
-
-                total_gross_gain = sum(sum(t["pnl_dollar"] for t in v["trades"] if t["pnl_dollar"] > 0) for v in backtest_res.values())
-                total_gross_loss = abs(sum(sum(t["pnl_dollar"] for t in v["trades"] if t["pnl_dollar"] < 0) for v in backtest_res.values()))
-
-                win_rate = round((total_wins / total_trades) * 100, 1) if total_trades > 0 else 0.0
-                profit_factor = round(total_gross_gain / total_gross_loss, 2) if total_gross_loss > 0 else (99.0 if net_pnl > 0 else 0.0)
-
-                # Quality Filters: Trades >= 5, WinRate >= 50%, ProfitFactor >= 1.3, max NetPnL
-                if total_trades >= 5 and win_rate >= 50.0 and profit_factor >= 1.3 and net_pnl > max_net_pnl:
-                    max_net_pnl = net_pnl
-                    champion_strat = strat
-                    champion_metrics = {
-                        "trades": total_trades,
-                        "win_rate": win_rate,
-                        "profit_factor": profit_factor,
-                        "net_pnl": net_pnl
-                    }
-                    logger.info(f"  🔥 NEW CHAMPION FOR '{target_uni}': '{strat_name}' → PnL=${net_pnl}, WinRate={win_rate}%, PF={profit_factor}, Trades={total_trades}")
-
-        # If all candidates produced 0 trades, flag for zero-trade recovery on retry
-        if all_zero_trades:
-            logger.warning(f"  ⚠️  ALL hypotheses for '{target_uni}' produced 0 trades. Zero-trade recovery context from llm_rules.json will be used on retry.")
-            zero_trade_recovery = True
-
-        if champion_strat:
-            c_name = champion_strat.get("name")
-            logger.info(f"🏆 ROUND {round_idx} CHAMPION FOR '{target_uni}': '{c_name}' (PnL=${champion_metrics['net_pnl']}, WinRate={champion_metrics['win_rate']}%, PF={champion_metrics['profit_factor']})")
-            promoted_champions.append(champion_strat)
-        else:
-            logger.info(f"Round {round_idx} for '{target_uni}' complete — no candidate met quality thresholds.")
+                logger.error(f"Error evaluating universe '{uni_name}' in parallel: {e}")
 
     if promoted_champions:
-        existing_names = {s.get("name") for s in existing_strategies if isinstance(s, dict)}
-        final_list = list(existing_strategies)
+        # Top-K Champion Pruning: Keep strictly 1 top champion per universe in strategies.json to prevent file bloat
+        universe_champions: Dict[str, Dict[str, Any]] = {}
+
+        # Preserve existing strategies indexed by universe
+        for s in existing_strategies:
+            if isinstance(s, dict):
+                u = s.get("universe", "All ETFs")
+                universe_champions[u] = s
+
+        # Override with newly promoted champions
         for champ in promoted_champions:
-            c_name = champ.get("name")
-            if c_name not in existing_names:
-                final_list.append(champ)
-                existing_names.add(c_name)
+            u = champ.get("universe", "All ETFs")
+            universe_champions[u] = champ
+
+        final_list = list(universe_champions.values())
 
         os.makedirs(os.path.dirname(strategies_path), exist_ok=True)
         with open(strategies_path, "w") as f:
             json.dump(final_list, f, indent=2)
         logger.info(f"\n==================================================")
-        logger.info(f"Auto-saved {len(promoted_champions)} Profit-Maximizing Champion Strategies to {strategies_path}.")
+        logger.info(f"Top-K Pruned: Saved {len(final_list)} universe champions to {strategies_path} (archived all past runs in SQLite research_strategies).")
         return {"saved_strategies": final_list}
 
     logger.info("\n==================================================")
     logger.info("Profit optimization complete. No new champions promoted.")
     return {"saved_strategies": existing_strategies}
+
+
