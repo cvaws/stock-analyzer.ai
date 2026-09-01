@@ -51,9 +51,9 @@ def build():
     target_binary = DASHBOARD_SIDECAR_DIR / binary_name
     if built_binary.exists():
         shutil.copy2(built_binary, target_binary)
-        print(f"✅ Successfully compiled & copied sidecar to: {target_binary}")
+        print(f"[StockWave Build] Successfully compiled & copied sidecar to: {target_binary}")
     else:
-        print(f"❌ Error: Compiled binary not found at {built_binary}")
+        print(f"[StockWave Build] Error: Compiled binary not found at {built_binary}")
 
 if __name__ == "__main__":
     build()
