@@ -18,14 +18,10 @@ def build():
     os.makedirs(DIST_DIR, exist_ok=True)
     os.makedirs(DASHBOARD_SIDECAR_DIR, exist_ok=True)
 
-    binary_name = "stockwave-sidecar"
-    if sys.platform == "win32":
-        binary_name += ".exe"
+    binary_name = "stockwave-sidecar.exe" if sys.platform == "win32" else "stockwave-sidecar"
 
     cmd = [
-        sys.executable,
-        "-m",
-        "PyInstaller",
+        "pyinstaller",
         "--name", "stockwave-sidecar",
         "--onedir" if "--onedir" in sys.argv else "--onefile",
         "--clean",

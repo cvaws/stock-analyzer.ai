@@ -42,7 +42,8 @@ jobs:
         working-directory: dashboard
         run: |
           npm install --legacy-peer-deps
-          npm run desktop:build
+          npm run build
+          npx electron-builder --mac dmg
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -78,14 +79,17 @@ jobs:
           uv add pyinstaller
 
       - name: Compile Standalone Python Sidecar Binary
+        shell: bash
         run: |
           uv run python scripts/build_sidecar.py
 
       - name: Build Dashboard & Package NSIS EXE
         working-directory: dashboard
+        shell: bash
         run: |
           npm install --legacy-peer-deps
-          npm run desktop:build
+          npm run build
+          npx electron-builder --win nsis
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
