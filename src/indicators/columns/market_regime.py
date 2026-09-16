@@ -50,14 +50,14 @@ def calculate_etf_health_score(
     score = 0
     upper_ticker = ticker.upper()
 
-    if upper_ticker in ["TLT", "VIXY", "UVXY", "VXX"]:
-        # Inverted Canary Logic (Weakness in Bonds/VIX = Bullish for Equities)
+    if upper_ticker in ["TLT", "VIXY", "UVXY", "VXX", "UUP", "^TNX", "TNX"]:
+        # Inverted Canary/Macro Logic (Weakness in Dollar/Yields/VIX = Bullish for Equities)
         if close_price < ema21: score += 1
         if close_price < sma50: score += 1
         if ema21 < sma50: score += 1
         if ema8 < ema21: score += 1
         if st_val is not None and st_dir is not None and (close_price < st_val or st_dir == -1): score += 1
-    elif group_name == "Canaries":
+    elif group_name in ["Canaries", "Macro"]:
         if close_price > ema21: score += 1
         if close_price > sma50: score += 1
         if ema21 > sma50: score += 1
@@ -181,13 +181,53 @@ def calculate_market_regime(
     spy_dist_days = compute_distribution_days("SPY")
     qqq_dist_days = compute_distribution_days("QQQ")
 
-    # Macro Context Status (TLT, VIXY)
+    # Macro Context Status (TLT, TNX, VIXY, UUP, HYG/IEF credit spread, RSP)
     tlt_health = health_results.get("TLT", {}).get("is_healthy", False)
     vixy_health = health_results.get("VIXY", {}).get("is_healthy", False)
+    uup_health = health_results.get("UUP", {}).get("is_healthy", False)
+    hyg_health = health_results.get("HYG", {}).get("is_healthy", False)
+    rsp_health = health_results.get("RSP", {}).get("is_healthy", False)
+
+    tnx_info = technical_indicators.get("^TNX", {}) or technical_indicators.get("TNX", {})
+    tnx_df = tnx_info.get("df", pd.DataFrame())
+    tnx_yield = round(float(tnx_df["Close"].iloc[-1]), 2) if not tnx_df.empty else None
+    tnx_health = health_results.get("^TNX", {}).get("is_healthy", False) or health_results.get("TNX", {}).get("is_healthy", False)
+
+    # HYG / IEF Credit Spread Ratio Calculation (Ratio > EMA21 = Credit Spreads Tightening = Risk-On)
+    hyg_info = technical_indicators.get("HYG", {})
+    ief_info = technical_indicators.get("IEF", {})
+    hyg_df = hyg_info.get("df", pd.DataFrame())
+    ief_df = ief_info.get("df", pd.DataFrame())
+    credit_spread_bullish = False
+    credit_ratio_val = None
+    if not hyg_df.empty and not ief_df.empty:
+        try:
+            common_idx = hyg_df.index.intersection(ief_df.index)
+            if len(common_idx) >= 21:
+                hyg_series = hyg_df.loc[common_idx, "Close"]
+                ief_series = ief_df.loc[common_idx, "Close"]
+                ratio = hyg_series / ief_series
+                ema21_ratio = ratio.ewm(span=21, adjust=False).mean()
+                credit_spread_bullish = bool(ratio.iloc[-1] > ema21_ratio.iloc[-1])
+                credit_ratio_val = round(float(ratio.iloc[-1]), 4)
+            else:
+                credit_spread_bullish = hyg_health
+        except Exception:
+            credit_spread_bullish = hyg_health
+    else:
+        credit_spread_bullish = hyg_health
+
     macro_context = {
         "tlt_bullish_for_equities": tlt_health,
+        "tnx_bullish_for_equities": tnx_health,
+        "tnx_yield": tnx_yield,
         "vixy_bullish_for_equities": vixy_health,
-        "summary": "Risk-On (Bonds/VIX Suppressed)" if (tlt_health and vixy_health) else "Macro Caution / Hedging" if (not tlt_health or not vixy_health) else "Neutral"
+        "uup_bullish_for_equities": uup_health,
+        "hyg_bullish_for_equities": hyg_health,
+        "credit_spread_bullish": credit_spread_bullish,
+        "credit_ratio": credit_ratio_val,
+        "rsp_bullish_for_equities": rsp_health,
+        "summary": "Risk-On (Liquidity Favorable)" if (vixy_health and uup_health and credit_spread_bullish) else "Macro Caution / Hedging" if (not vixy_health or not uup_health) else "Neutral"
     }
 
     # Cross-Category Divergence Warnings
@@ -295,7 +335,14 @@ def calculate_and_save_historical_market_regime(technical_indicators: Dict[str, 
         st_dir = row["supertrend_direction"]
         
         score = 0
-        if cat == "Canaries":
+        upper_t = str(row["ticker"]).upper()
+        if upper_t in ["TLT", "VIXY", "UVXY", "VXX", "UUP", "^TNX", "TNX"]:
+            if pd.notna(close) and pd.notna(ema21) and close < ema21: score += 1
+            if pd.notna(close) and pd.notna(sma50) and close < sma50: score += 1
+            if pd.notna(ema21) and pd.notna(sma50) and ema21 < sma50: score += 1
+            if pd.notna(ema8) and pd.notna(ema21) and ema8 < ema21: score += 1
+            if pd.notna(close) and pd.notna(st_val) and pd.notna(st_dir) and (close < st_val or st_dir == -1): score += 1
+        elif cat in ["Canaries", "Macro"]:
             if pd.notna(close) and pd.notna(ema21) and close > ema21: score += 1
             if pd.notna(close) and pd.notna(sma50) and close > sma50: score += 1
             if pd.notna(ema21) and pd.notna(sma50) and ema21 > sma50: score += 1

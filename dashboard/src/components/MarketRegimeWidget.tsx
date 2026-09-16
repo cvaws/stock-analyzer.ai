@@ -23,9 +23,16 @@ export interface MarketRegimeData {
     spy_dist_days?: number;
     qqq_dist_days?: number;
     macro_context?: {
-        tlt_bullish_for_equities: boolean;
-        vixy_bullish_for_equities: boolean;
-        summary: string;
+        tlt_bullish_for_equities?: boolean;
+        tnx_bullish_for_equities?: boolean;
+        tnx_yield?: number;
+        vixy_bullish_for_equities?: boolean;
+        uup_bullish_for_equities?: boolean;
+        hyg_bullish_for_equities?: boolean;
+        credit_spread_bullish?: boolean;
+        credit_ratio?: number;
+        rsp_bullish_for_equities?: boolean;
+        summary?: string;
     };
     divergence_warnings?: string[];
     leader_changes?: {
@@ -157,25 +164,57 @@ export const MarketRegimeWidget: React.FC<Props> = ({ regimeData }) => {
                 justifyContent: 'space-between',
                 fontSize: '0.75rem'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Macro Context:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Macro:</span>
                     <span style={{
-                        padding: '2px 8px',
+                        padding: '2px 7px',
                         borderRadius: '4px',
                         fontWeight: 700,
-                        background: macro_context?.tlt_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                        color: macro_context?.tlt_bullish_for_equities ? '#10b981' : '#f87171'
-                    }}>
-                        TLT: {macro_context?.tlt_bullish_for_equities ? 'Risk-On' : 'Yields Rising/Defensive'}
+                        fontSize: '0.72rem',
+                        background: macro_context?.uup_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: macro_context?.uup_bullish_for_equities ? '#10b981' : '#f87171'
+                    }} title="UUP (US Dollar Index): Soft dollar ($↓) is Risk-On for equities">
+                        UUP: {macro_context?.uup_bullish_for_equities ? 'Soft ($↓)' : 'Firm ($↑)'}
                     </span>
                     <span style={{
-                        padding: '2px 8px',
+                        padding: '2px 7px',
                         borderRadius: '4px',
                         fontWeight: 700,
+                        fontSize: '0.72rem',
+                        background: macro_context?.tnx_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: macro_context?.tnx_bullish_for_equities ? '#10b981' : '#f87171'
+                    }} title="^TNX (10Y Treasury Yield): Yield easing (<EMA21) reduces valuation headwind">
+                        10Y: {macro_context?.tnx_yield ? `${macro_context.tnx_yield}% ` : ''}{macro_context?.tnx_bullish_for_equities ? 'Easing' : 'Surging'}
+                    </span>
+                    <span style={{
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        background: macro_context?.credit_spread_bullish ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: macro_context?.credit_spread_bullish ? '#10b981' : '#f87171'
+                    }} title="HYG / IEF Credit Spread Ratio: High Yield outperforming Treasuries indicates credit appetite">
+                        HYG/IEF: {macro_context?.credit_spread_bullish ? 'Credit Open' : 'Credit Tight'}
+                    </span>
+                    <span style={{
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
                         background: macro_context?.vixy_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                         color: macro_context?.vixy_bullish_for_equities ? '#10b981' : '#f87171'
-                    }}>
+                    }} title="VIXY (Short-Term VIX): Subdued fear index (<EMA21)">
                         VIXY: {macro_context?.vixy_bullish_for_equities ? 'Calm' : 'Elevated'}
+                    </span>
+                    <span style={{
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        background: macro_context?.rsp_bullish_for_equities ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: macro_context?.rsp_bullish_for_equities ? '#10b981' : '#f87171'
+                    }} title="RSP (Equal Weight S&P 500): Broad market participation vs narrow mega-cap divergence">
+                        RSP: {macro_context?.rsp_bullish_for_equities ? 'Broad' : 'Lagging'}
                     </span>
                 </div>
 

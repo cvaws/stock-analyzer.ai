@@ -27,6 +27,7 @@ def build_workflow(include_optimization: bool = True):
         workflow.add_node('optimize_strategies', optimize_strategies)
 
     workflow.add_node('run_backtests', run_backtests)
+    workflow.add_node('ai_analysis', ai_analysis)
     workflow.add_node('export_reports', export_reports)
 
     # Add Edges
@@ -40,7 +41,8 @@ def build_workflow(include_optimization: bool = True):
     else:
         workflow.add_edge('detect_patterns', 'run_backtests')
 
-    workflow.add_edge('run_backtests', 'export_reports')
+    workflow.add_edge('run_backtests', 'ai_analysis')
+    workflow.add_edge('ai_analysis', 'export_reports')
     workflow.add_edge('export_reports', END)
 
     return workflow.compile()

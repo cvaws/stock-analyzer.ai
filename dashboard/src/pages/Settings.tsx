@@ -47,6 +47,10 @@ const Settings: React.FC = () => {
         localStorage.setItem('vision_model', visionModel);
     }, [visionModel]);
 
+    React.useEffect(() => {
+        localStorage.setItem('research_model', researchModel);
+    }, [researchModel]);
+
     const [customDataDir, setCustomDataDirState] = React.useState<string>('');
 
     React.useEffect(() => {

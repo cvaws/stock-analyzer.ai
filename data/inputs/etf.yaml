@@ -5,7 +5,13 @@ us_market:
     - IWM
     - SMH
     - SPMO
+  macro:
+    - UUP
+    - "^TNX"
     - TLT
+    - HYG
+    - IEF
+    - RSP
     - VIXY
   leadership:
     - IGV
@@ -23,6 +29,7 @@ us_market:
     - NASA
     - UFO
     - DAPP
+    - FOTO
   breadth:
     - XLF
     - IYT

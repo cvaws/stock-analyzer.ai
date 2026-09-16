@@ -225,7 +225,7 @@ def ingest_etfs(state: GraphState) -> dict:
 
             
             market_data = content.get("us_market", {})
-            CATEGORY_ORDER = ["Breadth", "Canaries", "Defense", "Leadership", "Leveraged_Long", "Leveraged_Short"]
+            CATEGORY_ORDER = ["Canaries", "Macro", "Leadership", "Breadth", "Defense", "Leveraged_Long", "Leveraged_Short"]
             
             for cat in CATEGORY_ORDER:
                 raw_list = market_data.get(cat.lower(), [])
@@ -267,11 +267,23 @@ def ingest_etfs(state: GraphState) -> dict:
             df_backfill = yf.download(needs_backfill, period="5y", interval="1d", group_by="ticker", auto_adjust=True, progress=True)
             for t in needs_backfill:
                 try:
-                    if len(needs_backfill) == 1:
-                        sub_df = df_backfill.dropna(subset=['Close']) if 'Close' in df_backfill else pd.DataFrame()
+                    if isinstance(df_backfill.columns, pd.MultiIndex):
+                        if t in df_backfill:
+                            sub_df = df_backfill[t].dropna(how="all").copy()
+                        else:
+                            # Ticker might be in level 1 or level 0
+                            try:
+                                sub_df = df_backfill.xs(t, axis=1, level='Ticker').dropna(how="all").copy()
+                            except Exception:
+                                sub_df = pd.DataFrame()
                     else:
-                        sub_df = df_backfill[t].dropna(subset=['Close']) if t in df_backfill else pd.DataFrame()
+                        sub_df = df_backfill.dropna(how="all").copy()
+
                     if not sub_df.empty:
+                        if isinstance(sub_df.columns, pd.MultiIndex):
+                            sub_df.columns = [str(c[-1]).capitalize() for c in sub_df.columns]
+                        else:
+                            sub_df.columns = [str(c).capitalize() for c in sub_df.columns]
                         save_ohlcv_to_sqlite(t, sub_df)
                 except Exception as ex:
                     logger.warning(f"Error processing backfill for {t}: {ex}")

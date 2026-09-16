@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { TrendingUp, Activity, BarChart2, Compass, Settings as SettingsIcon, LayoutDashboard, Database } from 'lucide-react';
+import { TrendingUp, Activity, BarChart2, Compass, Settings as SettingsIcon, LayoutDashboard, Database, Layers, LayoutGrid, Play, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface TopNavProps {
@@ -10,6 +10,37 @@ interface TopNavProps {
 const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab }) => {
     const [isMac, setIsMac] = useState(false);
     const [dataDirName, setDataDirName] = useState<string>('Local');
+    const [isScanning, setIsScanning] = useState(false);
+
+    const handleRunDailyScan = () => {
+        if (isScanning) return;
+        setIsScanning(true);
+
+        const SIDECAR_URL = (typeof window !== 'undefined' && (window as any).__SIDECAR_URL__) || 'http://127.0.0.1:8765';
+        const eventSource = new EventSource(`${SIDECAR_URL}/api/pipeline/run-stream`);
+
+        eventSource.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.status === 'completed' || data.status === 'failed') {
+                    setIsScanning(false);
+                    eventSource.close();
+                    if (data.status === 'completed') {
+                        window.dispatchEvent(new CustomEvent('market-data-updated'));
+                    }
+                }
+            } catch (err) {
+                console.error('Error parsing SSE event:', err);
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('SSE connection error:', err);
+            setIsScanning(false);
+            eventSource.close();
+            window.dispatchEvent(new CustomEvent('market-data-updated'));
+        };
+    };
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -29,6 +60,8 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab }) => {
 
     const navItems = [
         { name: 'Market', label: 'Market Overview', icon: <TrendingUp size={16} /> },
+        { name: 'ThemeTracker', label: 'Theme Tracker', icon: <Layers size={16} /> },
+        { name: 'EtfMatrix', label: 'ETF Categories', icon: <LayoutGrid size={16} /> },
         { name: 'Quadrant', label: 'Quadrant Map', icon: <Compass size={16} /> },
         { name: 'Technical', label: 'Technical Charts', icon: <Activity size={16} /> },
         { name: 'Backtests', label: 'Strategy Lab', icon: <BarChart2 size={16} /> },
@@ -129,8 +162,37 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab }) => {
                 })}
             </nav>
 
-            {/* Right: Storage Badge & Settings */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }} className="no-drag">
+            {/* Right: Storage Badge, Scan Button & Settings */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }} className="no-drag">
+                {/* Global Run Daily Scan Button */}
+                <button
+                    onClick={handleRunDailyScan}
+                    disabled={isScanning}
+                    title="Execute incremental daily scan across all ETFs"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '4px 10px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: isScanning ? 'rgba(99, 102, 241, 0.5)' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                        color: '#fff',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: isScanning ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 6px rgba(79, 70, 229, 0.3)',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    {isScanning ? (
+                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                        <Play size={11} fill="#fff" />
+                    )}
+                    <span>{isScanning ? 'Scanning...' : 'Run Scan'}</span>
+                </button>
+
                 {/* Data Directory Indicator */}
                 <div 
                     title="Active storage data location"

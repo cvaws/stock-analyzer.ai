@@ -69,7 +69,7 @@ export default defineConfig({
               }
             }
           }
-          if (parsedUrl === '/theme_tracker.json' || parsedUrl === '/etfs_tracker.json' || parsedUrl === '/market_regime.json' || parsedUrl === '/strategy_lab.json') {
+          if (parsedUrl === '/theme_tracker.json' || parsedUrl === '/etfs_tracker.json' || parsedUrl === '/market_regime.json' || parsedUrl === '/strategy_lab.json' || parsedUrl === '/ai_market_briefing.json') {
             // @ts-ignore
             const fileName = parsedUrl.substring(1);
             const filePath = path.resolve((process as any).cwd(), '../data/outputs', fileName);

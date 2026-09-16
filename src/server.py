@@ -10,7 +10,7 @@ import asyncio
 import threading
 from pathlib import Path
 from typing import AsyncGenerator
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sse_starlette.sse import EventSourceResponse
@@ -232,6 +232,27 @@ async def run_pipeline_stream():
 async def run_optimizer_stream():
     """SSE endpoint to stream LangGraph genetic optimizer progress live."""
     return EventSourceResponse(run_optimizer_generator())
+
+
+@app.post("/api/market/ai-briefing/regenerate")
+async def regenerate_ai_briefing(request: Request):
+    """Triggers the AI Executive Briefing synthesis node on-demand with optional model override."""
+    from graphs.nodes.ai_analysis import ai_analysis
+    model_name = None
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            model_name = body.get("model") or body.get("model_name")
+    except Exception:
+        pass
+
+    try:
+        loop = asyncio.get_running_loop()
+        state_input = {"model_name": model_name} if model_name else {}
+        result = await loop.run_in_executor(None, lambda: ai_analysis(state_input))
+        return JSONResponse(content=result.get("ai_market_briefing", {}))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI regeneration failed: {str(e)}")
 
 
 def start(port: int = 8765, host: str = "127.0.0.1"):

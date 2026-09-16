@@ -1,18 +1,20 @@
-const SIDECAR_URL = (typeof window !== 'undefined' && (window as any).__SIDECAR_URL__) || '';
-
 export const getApiUrl = (path: string): string => {
+    const sidecarUrl = (typeof window !== 'undefined' && (window as any).__SIDECAR_URL__) || '';
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    if (SIDECAR_URL) {
+    if (sidecarUrl) {
         // Map root data requests to FastAPI /api/data/ route when using sidecar
         if (cleanPath.startsWith('/etfs_tracker.json') || 
             cleanPath.startsWith('/market_regime.json') || 
             cleanPath.startsWith('/strategy_lab.json') || 
             cleanPath.startsWith('/theme_tracker.json') || 
+            cleanPath.startsWith('/ai_market_briefing.json') || 
             cleanPath.startsWith('/default_scan.csv')) {
-            const fileName = cleanPath.split('?')[0].substring(1);
-            return `${SIDECAR_URL}/api/data/${fileName}`;
+            const parts = cleanPath.substring(1).split('?');
+            const fileName = parts[0];
+            const queryString = parts[1] ? `?${parts[1]}` : '';
+            return `${sidecarUrl}/api/data/${fileName}${queryString}`;
         }
-        return `${SIDECAR_URL}${cleanPath}`;
+        return `${sidecarUrl}${cleanPath}`;
     }
     return cleanPath;
 };
@@ -720,6 +722,7 @@ export interface RrgHistoryPoint {
 export interface ThemeStockData {
     symbol: string;
     companyName: string;
+    themeName?: string;
     price: number;
     dailyChangePct?: number;
     changeW?: number;
@@ -867,6 +870,58 @@ export async function triggerBacktestRun(): Promise<boolean> {
     } catch (e) {
         console.error('[StrategyLab] Error triggering backtest run:', e);
         return false;
+    }
+}
+
+export interface AiLeaderSpotlight {
+    symbol: string;
+    theme: string;
+    thesis: string;
+}
+
+export interface AiMarketBriefingData {
+    headline: string;
+    the_bottom_line?: string | string[];
+    executive_summary?: string;
+    cycle_context?: string;
+    one_year_cycle_context?: string;
+    macro_synthesis?: string;
+    sector_rotation_summary?: string;
+    tactical_action_plan: string[];
+    leader_spotlights: AiLeaderSpotlight[];
+    key_risk_alerts: string[];
+}
+
+export async function fetchAiMarketBriefing(): Promise<AiMarketBriefingData | null> {
+    try {
+        const res = await fetch(getApiUrl(`/ai_market_briefing.json?cb=${Date.now()}`));
+        if (!res.ok) {
+            return null;
+        }
+        return await res.json();
+    } catch (e) {
+        console.error('[AiBriefing] Error fetching AI Market Briefing:', e);
+        return null;
+    }
+}
+
+export async function regenerateAiMarketBriefing(customModel?: string): Promise<AiMarketBriefingData | null> {
+    try {
+        const sidecarUrl = (typeof window !== 'undefined' && (window as any).__SIDECAR_URL__) || 'http://127.0.0.1:8765';
+        const url = `${sidecarUrl}/api/market/ai-briefing/regenerate`;
+        const selectedModel = customModel || (typeof window !== 'undefined' ? localStorage.getItem('research_model') : null) || 'qwen3-coder:30b';
+        const res = await fetch(url, { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: selectedModel })
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to regenerate AI Briefing: ${res.statusText}`);
+        }
+        return await res.json();
+    } catch (e) {
+        console.error('[AiBriefing] Error regenerating AI Market Briefing:', e);
+        return null;
     }
 }
 

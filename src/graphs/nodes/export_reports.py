@@ -43,6 +43,8 @@ def export_reports(state: GraphState) -> dict:
     scan_rows = []
     theme_tracker_items = []
 
+    from indicators.etf_themes import get_etf_theme_name
+
     for ticker in ordered_tickers:
         info = technical_indicators.get(ticker, {})
         if not info:
@@ -52,6 +54,7 @@ def export_reports(state: GraphState) -> dict:
         patterns = detected_patterns.get(ticker, {})
         category = ticker_to_category.get(ticker, "General ETF")
         company_name = etf_names.get(ticker, f"{ticker} ETF")
+        theme_name = get_etf_theme_name(ticker, company_name)
         
         latest_close = info.get("latest_close", 0.0)
         rs_rating = info.get("rs_rating", 0)
@@ -75,6 +78,7 @@ def export_reports(state: GraphState) -> dict:
         scan_rows.append({
             "Ticker": ticker,
             "Description": company_name,
+            "Theme": theme_name,
             "Close": latest_close,
             "Change_D": pct_d,
             "Change_W": pct_w,
@@ -111,6 +115,7 @@ def export_reports(state: GraphState) -> dict:
         theme_tracker_items.append({
             "symbol": ticker,
             "companyName": company_name,
+            "themeName": theme_name,
             "price": latest_close,
             "dailyChangePct": pct_d,
             "changeW": pct_w,

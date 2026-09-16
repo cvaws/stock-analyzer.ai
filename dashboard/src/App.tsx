@@ -9,6 +9,8 @@ import { fetchRSStocks, RSStock } from './services/dataService';
 
 
 import StrategyLab from './pages/StrategyLab';
+import ThemeTracker from './pages/ThemeTracker';
+import EtfMatrix from './pages/EtfMatrix';
 
 function App() {
 
@@ -44,6 +46,11 @@ function App() {
     switch (activeTab) {
       case 'Market':
         return <Market />;
+      case 'ThemeTracker':
+        return <ThemeTracker />;
+      case 'EtfMatrix':
+      case 'EtfCategories':
+        return <EtfMatrix />;
       case 'Quadrant':
         return <Quadrant />;
       case 'Fundamental':
